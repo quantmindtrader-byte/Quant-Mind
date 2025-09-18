@@ -93,7 +93,7 @@ class TradingAppManager {
 
   async startTradingAgent(config) {
     try {
-      console.log('Bot start requested with config:', config);
+      console.log('DEBUG: Bot start requested with config:', JSON.stringify(config, null, 2));
       
       const headers = {
         'Content-Type': 'application/json'
@@ -102,7 +102,11 @@ class TradingAppManager {
       // Add auth token if available
       if (config.AUTH_TOKEN) {
         headers['Authorization'] = `Bearer ${config.AUTH_TOKEN}`;
+        console.log('DEBUG: Added Authorization header to request');
       }
+      
+      console.log('DEBUG: Making request to:', `${this.backendUrl}/api/bot/start`);
+      console.log('DEBUG: Request headers:', headers);
       
       const response = await fetch(`${this.backendUrl}/api/bot/start`, {
         method: 'POST',
@@ -110,16 +114,23 @@ class TradingAppManager {
         body: JSON.stringify(config)
       });
       
+      console.log('DEBUG: Backend response status:', response.status);
+      console.log('DEBUG: Backend response headers:', Object.fromEntries(response.headers.entries()));
+      
       const result = await response.json();
+      console.log('DEBUG: Backend response body:', result);
       
       if (result.success) {
+        console.log('DEBUG: Bot started successfully, sending to renderer');
         this.sendToRenderer('bot-started', result);
         return result;
       } else {
+        console.log('DEBUG: Bot start failed:', result.error);
         throw new Error(result.error || 'Failed to start bot');
       }
     } catch (error) {
-      console.error('Failed to start trading agent:', error);
+      console.error('DEBUG: Failed to start trading agent:', error.message);
+      console.error('DEBUG: Error stack:', error.stack);
       this.sendToRenderer('agent-error', error.message);
       throw error;
     }
@@ -206,41 +217,7 @@ class TradingAppManager {
 
     ipcMain.handle('start-agent', async (event, config) => {
       try {
-        // Get user plan from database
-        const authToken = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("authToken")'
-        ).catch(() => null);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-              const plan = await response.json();
-              userPlan = plan.plan_type || 'Free';
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        }
-        
-        // Skip ads for paid users
-        console.log(`DEBUG: User plan: '${userPlan}' (type: ${typeof userPlan})`);
-        console.log(`DEBUG: Plan comparison - Free: ${userPlan === 'Free'}, free: ${userPlan === 'free'}, toLowerCase: ${userPlan.toLowerCase() === 'free'}`);
-        const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-        console.log(`DEBUG: isPaidUser: ${isPaidUser}`);
-        
-        if (isPaidUser) {
-          console.log(`DEBUG: Paid user (${userPlan}) - skipping ads completely`);
-        } else {
-          console.log(`DEBUG: Free user (${userPlan}) - showing ad`);
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'start-bot');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required to start bot. Please watch the ad or upgrade to Premium.' };
-          }
-        }
+        console.log('DEBUG: Bot start requested - ads completely disabled');
         
         // Get auth token from localStorage if available
         const botAuthToken = await this.mainWindow.webContents.executeJavaScript(
@@ -249,12 +226,14 @@ class TradingAppManager {
         
         if (botAuthToken) {
           config.AUTH_TOKEN = botAuthToken;
-          console.log('Added auth token to bot config');
+          console.log('DEBUG: Added auth token to bot config');
         } else {
-          console.log('No auth token available');
+          console.log('DEBUG: No auth token available');
         }
         
+        console.log('DEBUG: Starting trading agent with config:', JSON.stringify(config, null, 2));
         const result = await this.startTradingAgent(config);
+        console.log('DEBUG: Trading agent start result:', result);
         return { success: true, result };
       } catch (error) {
         console.error('Start agent error:', error);
@@ -298,38 +277,7 @@ class TradingAppManager {
 
     ipcMain.handle('force-reanalysis-with-ad', async () => {
       try {
-        // Get user plan from database
-        const authToken = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("authToken")'
-        ).catch(() => null);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-              const plan = await response.json();
-              userPlan = plan.plan_type || 'Free';
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        }
-        
-        // Skip ads for paid users
-        const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-        
-        if (isPaidUser) {
-          console.log(`DEBUG: Paid user (${userPlan}) - skipping force-reanalysis ads`);
-        } else {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required for force reanalysis. Please watch the ad or upgrade to Premium.' };
-          }
-        }
-        
+        console.log('DEBUG: Force reanalysis requested - ads disabled');
         return { success: true, canProceed: true };
       } catch (error) {
         return { success: false, error: error.message };
@@ -367,52 +315,7 @@ class TradingAppManager {
     // Add IPC handlers for ad-related actions
     ipcMain.handle('save-config-with-ad-check', async (event, configData, action) => {
       try {
-        // Get user plan from database
-        const authToken = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("authToken")'
-        ).catch(() => null);
-        
-        const userId = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("userId")'
-        ).catch(() => null);
-        
-        console.log('DEBUG: Auth token available:', !!authToken);
-        console.log('DEBUG: User ID from localStorage:', userId);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            console.log('DEBUG: API response status:', response.status);
-            if (response.ok) {
-              const plan = await response.json();
-              console.log('DEBUG: API response data:', plan);
-              userPlan = plan.plan_type || 'Free';
-              console.log('DEBUG: Final user plan:', userPlan);
-            } else {
-              console.log('DEBUG: API response not OK:', await response.text());
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        } else {
-          console.log('DEBUG: No auth token found');
-        }
-        
-        // Skip ads for paid users
-        const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-        
-        if (isPaidUser) {
-          console.log(`DEBUG: Paid user (${userPlan}) - skipping save-config ads`);
-        } else {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, action);
-          if (!adWatched) {
-            return { success: false, error: 'Ad required to save configuration. Please watch the ad or upgrade to Premium.' };
-          }
-        }
-        
+        console.log('DEBUG: Save config requested - ads disabled');
         return { success: true, canProceed: true };
       } catch (error) {
         return { success: false, error: error.message };
@@ -459,39 +362,9 @@ class TradingAppManager {
           {
             label: 'Force Reanalysis',
             accelerator: 'CmdOrCtrl+F',
-            click: async () => {
-              // Get user plan from database
-              const authToken = await this.mainWindow.webContents.executeJavaScript(
-                'localStorage.getItem("authToken")'
-              ).catch(() => null);
-              
-              let userPlan = 'Free';
-              if (authToken) {
-                try {
-                  const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                  });
-                  if (response.ok) {
-                    const plan = await response.json();
-                    userPlan = plan.plan_type || 'Free';
-                  }
-                } catch (error) {
-                  console.log('Failed to get user plan from database:', error);
-                }
-              }
-              
-              // Skip ads for paid users
-              const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-              
-              if (isPaidUser) {
-                console.log(`DEBUG: Paid user (${userPlan}) - skipping menu force-reanalysis ads`);
-                this.sendToRenderer('menu-action', 'force-reanalysis');
-              } else {
-                const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-                if (adWatched) {
-                  this.sendToRenderer('menu-action', 'force-reanalysis');
-                }
-              }
+            click: () => {
+              console.log('DEBUG: Menu force reanalysis - ads disabled');
+              this.sendToRenderer('menu-action', 'force-reanalysis');
             }
           }
         ]
