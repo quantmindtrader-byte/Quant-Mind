@@ -20,7 +20,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTradingStats = async (period = 'daily', startDate = null, endDate = null) => {
     try {
       const token = localStorage.getItem('authToken');
-      let url = `http://127.0.0.1:5000/api/user/trading-statistics?period=${period}`;
+      let url = `http://localhost:5000/api/user/trading-statistics?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
       }
@@ -41,7 +41,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTodayStats = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/user/trading-statistics?period=daily', {
+      const response = await fetch('http://localhost:5000/api/user/trading-statistics?period=daily', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -57,7 +57,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTradeHistory = async (period = 'daily', startDate = null, endDate = null) => {
     try {
       const token = localStorage.getItem('authToken');
-      let url = `http://127.0.0.1:5000/api/user/trade-history?period=${period}`;
+      let url = `http://localhost:5000/api/user/trade-history?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
       }
@@ -81,7 +81,7 @@ const Dashboard = ({ appStatus }) => {
         const token = localStorage.getItem('authToken');
         
         // Load daily limits
-        const limitsResponse = await fetch('http://127.0.0.1:5000/api/user/trading-limits', {
+        const limitsResponse = await fetch('http://localhost:5000/api/user/trading-limits', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (limitsResponse.ok) {
