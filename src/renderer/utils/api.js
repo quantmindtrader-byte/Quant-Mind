@@ -32,6 +32,12 @@ class ApiClient {
       const data = await response.json();
       
       if (!response.ok) {
+        // If unauthorized, clear token and force re-login
+        if (response.status === 401) {
+          localStorage.removeItem('authToken');
+          localStorage.removeItem('user');
+          window.location.reload();
+        }
         throw new Error(data.error || `HTTP ${response.status}`);
       }
       

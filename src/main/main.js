@@ -569,7 +569,6 @@ class TradingAppManager {
   async initialize() {
     await this.createWindow();
     this.setupIPC();
-    this.setupSocketConnection();
     this.createMenu();
     this.setupAutoUpdater();
     

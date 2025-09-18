@@ -13,6 +13,12 @@ const SubscriptionStatus = ({ user }) => {
 
   const fetchUsage = async () => {
     try {
+      const token = localStorage.getItem('authToken');
+      if (!token) {
+        setLoading(false);
+        return;
+      }
+      
       const data = await api.get('/api/saas/usage');
       if (data.current_usage && data.plan) {
         setUsage(data);
@@ -24,7 +30,24 @@ const SubscriptionStatus = ({ user }) => {
     }
   };
 
-  if (loading || !usage) return null;
+  if (loading) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-4 mb-4">
+        <div className="text-center text-gray-400">Loading usage data...</div>
+      </div>
+    );
+  }
+  
+  if (!usage) {
+    return (
+      <div className="bg-gray-800 rounded-lg p-4 mb-4">
+        <div className="text-center text-gray-400">
+          <div className="text-red-400 mb-2">⚠️ Authentication Required</div>
+          <div className="text-sm">Please log in to view usage data</div>
+        </div>
+      </div>
+    );
+  }
 
   const { current_usage, plan } = usage;
   const tokensUsed = current_usage.tokens || 0;

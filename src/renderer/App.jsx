@@ -23,7 +23,27 @@ function App() {
     // Check authentication status
     const token = localStorage.getItem('authToken');
     if (token) {
-      setIsAuthenticated(true);
+      // Validate token by making a test API call
+      const validateToken = async () => {
+        try {
+          const response = await fetch('http://localhost:5000/api/user/profile', {
+            headers: { 'Authorization': `Bearer ${token}` }
+          });
+          if (response.ok) {
+            setIsAuthenticated(true);
+          } else {
+            // Token is invalid, clear it
+            localStorage.removeItem('authToken');
+            localStorage.removeItem('user');
+            setIsAuthenticated(false);
+          }
+        } catch (error) {
+          console.error('Token validation failed:', error);
+          // Network error, assume token is valid for now
+          setIsAuthenticated(true);
+        }
+      };
+      validateToken();
     }
 
     // Get initial app status once
