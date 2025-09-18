@@ -68,12 +68,12 @@
     },
     "publish": {
       "provider": "github",
-      "owner": "your-username",
-      "repo": "quantmind-desktop"
+      "owner": "quantmindtrader-byte",
+      "repo": "Quant-Mind"
     },
     "repository": {
       "type": "git",
-      "url": "https://github.com/your-username/quantmind-desktop.git"
+      "url": "https://github.com/quantmindtrader-byte/Quant-Mind.git"
     }
   }
 }
