@@ -6,46 +6,8 @@ const adManager = require('./adManager');
 const { io } = require('socket.io-client');
 
 // Configure auto-updater
-autoUpdater.checkForUpdatesAndNotify();
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
-
-// Auto-updater events
-autoUpdater.on('checking-for-update', () => {
-  console.log('Checking for update...');
-});
-
-autoUpdater.on('update-available', (info) => {
-  console.log('Update available:', info.version);
-  if (appManager.mainWindow) {
-    appManager.mainWindow.webContents.send('update-available', info);
-  }
-});
-
-autoUpdater.on('update-not-available', (info) => {
-  console.log('Update not available:', info.version);
-});
-
-autoUpdater.on('error', (err) => {
-  console.log('Error in auto-updater:', err);
-});
-
-autoUpdater.on('download-progress', (progressObj) => {
-  let log_message = "Download speed: " + progressObj.bytesPerSecond;
-  log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
-  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
-  console.log(log_message);
-  if (appManager.mainWindow) {
-    appManager.mainWindow.webContents.send('update-downloading', progressObj);
-  }
-});
-
-autoUpdater.on('update-downloaded', (info) => {
-  console.log('Update downloaded:', info.version);
-  if (appManager.mainWindow) {
-    appManager.mainWindow.webContents.send('update-ready', info);
-  }
-});
 
 class TradingAppManager {
   constructor() {
@@ -562,11 +524,54 @@ class TradingAppManager {
     }
   }
 
+  setupAutoUpdater() {
+    // Auto-updater events
+    autoUpdater.on('checking-for-update', () => {
+      console.log('Checking for update...');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('Update available:', info.version);
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('update-available', info);
+      }
+    });
+
+    autoUpdater.on('update-not-available', (info) => {
+      console.log('Update not available:', info.version);
+    });
+
+    autoUpdater.on('error', (err) => {
+      console.log('Error in auto-updater:', err);
+    });
+
+    autoUpdater.on('download-progress', (progressObj) => {
+      let log_message = "Download speed: " + progressObj.bytesPerSecond;
+      log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+      log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+      console.log(log_message);
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('update-downloading', progressObj);
+      }
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('Update downloaded:', info.version);
+      if (this.mainWindow) {
+        this.mainWindow.webContents.send('update-ready', info);
+      }
+    });
+
+    // Check for updates on startup
+    autoUpdater.checkForUpdatesAndNotify();
+  }
+
   async initialize() {
     await this.createWindow();
     this.setupIPC();
     this.setupSocketConnection();
     this.createMenu();
+    this.setupAutoUpdater();
     
     // Check backend connection on startup
     const connected = await this.checkBackendConnection();
