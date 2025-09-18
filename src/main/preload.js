@@ -27,7 +27,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   // WebSocket connection helper
   createWebSocket: (port) => {
-    return new WebSocket(`ws://127.0.0.1:${port}`);
+    return new WebSocket(`ws://localhost:${port}`);
   },
 
   // File dialog
