@@ -1,6 +1,6 @@
 {
   "name": "quantmind-desktop",
-  "version": "1.1.5",
+  "version": "1.1.6",
   "description": "QuantMind Trading Desktop Application",
   "author": "QuantMind",
   "main": "src/main/main.js",
@@ -23,6 +23,7 @@
   "dependencies": {
     "axios": "^1.6.0",
     "cors": "^2.8.5",
+    "dotenv": "^17.2.2",
     "electron-updater": "^6.1.7",
     "express": "^4.21.2",
     "socket.io-client": "^4.8.1"
@@ -59,7 +60,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "publisherName": "QuantMind"

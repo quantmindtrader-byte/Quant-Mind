@@ -5,6 +5,9 @@ const adManager = require('./adManager');
 
 const { io } = require('socket.io-client');
 
+// Load environment variables
+require('dotenv').config();
+
 // Configure auto-updater
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
@@ -500,9 +503,23 @@ class TradingAppManager {
             label: 'Check for Updates',
             click: async () => {
               try {
-                await autoUpdater.checkForUpdatesAndNotify();
+                console.log('MANUAL UPDATE CHECK: Starting...');
+                const result = await autoUpdater.checkForUpdatesAndNotify();
+                console.log('MANUAL UPDATE CHECK: Result:', result);
+                
+                // Show immediate feedback to user
+                if (this.mainWindow) {
+                  this.mainWindow.webContents.executeJavaScript(`
+                    console.log('Manual update check initiated...');
+                  `);
+                }
               } catch (error) {
-                console.error('Update check failed:', error);
+                console.error('MANUAL UPDATE CHECK FAILED:', error.message);
+                console.error('MANUAL UPDATE CHECK ERROR STACK:', error.stack);
+                
+                // Show error to user
+                dialog.showErrorBox('Update Check Failed', 
+                  `Failed to check for updates: ${error.message}`);
               }
             }
           },
@@ -547,47 +564,72 @@ class TradingAppManager {
   }
 
   setupAutoUpdater() {
+    // Configure auto-updater for private GitHub repo
+    autoUpdater.autoDownload = false; // Don't auto-download, ask user first
+    autoUpdater.allowPrerelease = false;
+    
+    // Set GitHub token for private repository access
+    if (process.env.GH_TOKEN) {
+      autoUpdater.requestHeaders = {
+        'Authorization': `token ${process.env.GH_TOKEN}`
+      };
+      console.log('AUTO-UPDATER: GitHub token configured for private repo access');
+    } else {
+      console.warn('AUTO-UPDATER: No GH_TOKEN found - private repo access may fail');
+    }
+    
     // Auto-updater events
     autoUpdater.on('checking-for-update', () => {
-      console.log('Checking for update...');
+      console.log('AUTO-UPDATER: Checking for update...');
     });
 
     autoUpdater.on('update-available', (info) => {
-      console.log('Update available:', info.version);
+      console.log('AUTO-UPDATER: Update available:', info.version);
+      console.log('AUTO-UPDATER: Release info:', JSON.stringify(info, null, 2));
       if (this.mainWindow) {
         this.mainWindow.webContents.send('update-available', info);
       }
     });
 
     autoUpdater.on('update-not-available', (info) => {
-      console.log('Update not available:', info.version);
+      console.log('AUTO-UPDATER: Update not available. Current version:', info.version);
     });
 
     autoUpdater.on('error', (err) => {
-      console.log('Error in auto-updater:', err);
+      console.error('AUTO-UPDATER ERROR:', err.message);
+      console.error('AUTO-UPDATER ERROR STACK:', err.stack);
     });
 
     autoUpdater.on('download-progress', (progressObj) => {
       let log_message = "Download speed: " + progressObj.bytesPerSecond;
       log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
       log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
-      console.log(log_message);
+      console.log('AUTO-UPDATER:', log_message);
       if (this.mainWindow) {
         this.mainWindow.webContents.send('update-downloading', progressObj);
       }
     });
 
     autoUpdater.on('update-downloaded', (info) => {
-      console.log('Update downloaded:', info.version);
+      console.log('AUTO-UPDATER: Update downloaded:', info.version);
       if (this.mainWindow) {
         this.mainWindow.webContents.send('update-ready', info);
       }
     });
 
     // Check for updates on startup and every 30 minutes
-    autoUpdater.checkForUpdatesAndNotify();
+    setTimeout(() => {
+      console.log('AUTO-UPDATER: Initial update check...');
+      autoUpdater.checkForUpdatesAndNotify().catch(err => {
+        console.error('AUTO-UPDATER: Initial check failed:', err.message);
+      });
+    }, 5000); // Wait 5 seconds after startup
+    
     setInterval(() => {
-      autoUpdater.checkForUpdatesAndNotify();
+      console.log('AUTO-UPDATER: Periodic update check...');
+      autoUpdater.checkForUpdatesAndNotify().catch(err => {
+        console.error('AUTO-UPDATER: Periodic check failed:', err.message);
+      });
     }, 30 * 60 * 1000); // 30 minutes
   }
 
