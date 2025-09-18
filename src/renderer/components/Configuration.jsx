@@ -242,6 +242,13 @@ const Configuration = () => {
     try {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       const userPlan = user.subscription?.plan_type || 'Free';
+      const token = localStorage.getItem('authToken');
+      
+      console.log('DEBUG: saveConfigToBackend called');
+      console.log('DEBUG: showAd:', showAd);
+      console.log('DEBUG: userPlan:', userPlan);
+      console.log('DEBUG: token available:', !!token);
+      console.log('DEBUG: config to save:', newConfig);
       
       if (showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan)) {
         setOriginalConfig(JSON.parse(JSON.stringify(config)));
@@ -261,8 +268,12 @@ const Configuration = () => {
         }
       }
       
-      const token = localStorage.getItem('authToken');
-      console.log('Saving config to backend:', newConfig);
+      if (!token) {
+        console.error('DEBUG: No auth token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log('DEBUG: Making API request to save config');
       
       const response = await fetch('http://localhost:5000/api/settings', {
         method: 'POST',
@@ -273,16 +284,19 @@ const Configuration = () => {
         body: JSON.stringify(newConfig)
       });
       
+      console.log('DEBUG: Response status:', response.status);
+      console.log('DEBUG: Response ok:', response.ok);
+      
       const result = await response.json();
-      console.log('Save response:', result);
+      console.log('DEBUG: Response data:', result);
       
       if (!response.ok) {
-        throw new Error(result.error || 'Failed to save settings');
+        throw new Error(result.error || `HTTP ${response.status}: Failed to save settings`);
       }
       
       if (!showAd) {
         // Silent save for auto-save, only show notification on manual save
-        console.log('Settings auto-saved successfully');
+        console.log('DEBUG: Settings auto-saved successfully');
       } else {
         actions.addNotification({
           type: 'success',
@@ -291,7 +305,7 @@ const Configuration = () => {
         });
       }
     } catch (error) {
-      console.error('Save error:', error);
+      console.error('DEBUG: Save error:', error);
       actions.addNotification({
         type: 'error',
         title: 'Save Error',
@@ -301,16 +315,21 @@ const Configuration = () => {
   };
 
   const handleDirectConfigChange = (key, value) => {
+    console.log('DEBUG: handleDirectConfigChange called:', key, value);
+    
     const newConfig = {
       ...config,
       [key]: value
     };
+    
+    console.log('DEBUG: New config created:', newConfig);
+    
     setConfig(newConfig);
     actions.setConfig(newConfig);
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
     
     // Auto-save to database for immediate persistence
-    console.log('Auto-saving config change:', key, value);
+    console.log('DEBUG: Triggering auto-save for:', key, value);
     saveConfigToBackend(newConfig, false);
   };
 

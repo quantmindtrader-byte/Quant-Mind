@@ -50,8 +50,8 @@ autoUpdater.on('update-downloaded', (info) => {
 class TradingAppManager {
   constructor() {
     this.mainWindow = null;
-    this.backendUrl = 'http://127.0.0.1:5000';
-    this.socketUrl = 'http://127.0.0.1:5000';
+    this.backendUrl = 'http://localhost:5000';
+    this.socketUrl = 'http://localhost:5000';
     
     // Handle SSL certificate errors for AdMob
     app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
@@ -84,7 +84,7 @@ class TradingAppManager {
     // Load the React app
     const tryLoadApp = async () => {
       try {
-        await this.mainWindow.loadURL('http://127.0.0.1:5173');
+        await this.mainWindow.loadURL('http://localhost:5173');
         console.log('Connected to React app on port 5173');
         this.mainWindow.webContents.openDevTools();
         return;
