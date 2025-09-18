@@ -569,14 +569,25 @@ class TradingAppManager {
     autoUpdater.allowPrerelease = false;
     
     // Set GitHub token for private repository access
-    if (process.env.GH_TOKEN) {
+    const githubToken = process.env.GH_TOKEN || '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';
+    if (githubToken) {
       autoUpdater.requestHeaders = {
-        'Authorization': `token ${process.env.GH_TOKEN}`
+        'Authorization': `token ${githubToken}`,
+        'User-Agent': 'QuantMind-Desktop'
       };
       console.log('AUTO-UPDATER: GitHub token configured for private repo access');
     } else {
-      console.warn('AUTO-UPDATER: No GH_TOKEN found - private repo access may fail');
+      console.warn('AUTO-UPDATER: No GitHub token found - private repo access may fail');
     }
+    
+    // Force update server URL
+    autoUpdater.setFeedURL({
+      provider: 'github',
+      owner: 'quantmindtrader-byte',
+      repo: 'Quant-Mind',
+      token: githubToken
+    });
+    console.log('AUTO-UPDATER: Feed URL configured for GitHub repo');
     
     // Auto-updater events
     autoUpdater.on('checking-for-update', () => {
