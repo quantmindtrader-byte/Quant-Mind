@@ -1,6 +1,6 @@
 {
   "name": "quantmind-desktop",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "description": "QuantMind Trading Desktop Application",
   "author": "QuantMind",
   "main": "src/main/main.js",

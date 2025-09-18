@@ -224,8 +224,10 @@ class TradingAppManager {
         }
         
         // Skip ads for paid users
-        console.log(`DEBUG: User plan: ${userPlan}`);
+        console.log(`DEBUG: User plan: '${userPlan}' (type: ${typeof userPlan})`);
+        console.log(`DEBUG: Plan comparison - Free: ${userPlan === 'Free'}, free: ${userPlan === 'free'}, toLowerCase: ${userPlan.toLowerCase() === 'free'}`);
         const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
+        console.log(`DEBUG: isPaidUser: ${isPaidUser}`);
         
         if (isPaidUser) {
           console.log(`DEBUG: Paid user (${userPlan}) - skipping ads completely`);

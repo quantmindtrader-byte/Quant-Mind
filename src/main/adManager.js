@@ -68,6 +68,10 @@ class AdManager {
 
   async checkUserPlanAndShowAd(userPlan, action = 'continue') {
     console.log(`AdManager: Checking user plan: ${userPlan}`);
+    // TEMPORARY: Disable all ads to prevent blank windows
+    console.log(`AdManager: Ads temporarily disabled - skipping for all users`);
+    return true;
+    
     // Check if user has a paid plan (anything other than Free)
     const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
     if (isPaidUser) {
