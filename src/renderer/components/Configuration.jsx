@@ -262,24 +262,36 @@ const Configuration = () => {
       }
       
       const token = localStorage.getItem('authToken');
-      // For MT5 config removal, don't merge - use the new config as-is
-      let mergedConfig = newConfig;
+      console.log('Saving config to backend:', newConfig);
       
-      await fetch('http://localhost:5000/api/settings', {
+      const response = await fetch('http://localhost:5000/api/settings', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(mergedConfig)
+        body: JSON.stringify(newConfig)
       });
       
-      actions.addNotification({
-        type: 'success',
-        title: 'Configuration Saved',
-        message: showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan) ? 'Thank you for watching the ad! Configuration saved successfully.' : 'Configuration saved successfully.'
-      });
+      const result = await response.json();
+      console.log('Save response:', result);
+      
+      if (!response.ok) {
+        throw new Error(result.error || 'Failed to save settings');
+      }
+      
+      if (!showAd) {
+        // Silent save for auto-save, only show notification on manual save
+        console.log('Settings auto-saved successfully');
+      } else {
+        actions.addNotification({
+          type: 'success',
+          title: 'Configuration Saved',
+          message: showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan) ? 'Thank you for watching the ad! Configuration saved successfully.' : 'Configuration saved successfully.'
+        });
+      }
     } catch (error) {
+      console.error('Save error:', error);
       actions.addNotification({
         type: 'error',
         title: 'Save Error',
@@ -296,6 +308,10 @@ const Configuration = () => {
     setConfig(newConfig);
     actions.setConfig(newConfig);
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    
+    // Auto-save to database for immediate persistence
+    console.log('Auto-saving config change:', key, value);
+    saveConfigToBackend(newConfig, false);
   };
 
   const handleAddMT5Config = () => {
