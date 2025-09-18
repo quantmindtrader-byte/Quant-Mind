@@ -95,7 +95,7 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
     const fetchLimits = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/user/trading-limits', {
+        const response = await fetch('http://localhost:5000/api/user/trading-limits', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -221,7 +221,7 @@ const Configuration = () => {
     const loadConfig = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/settings', {
+        const response = await fetch('http://localhost:5000/api/settings', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -265,7 +265,7 @@ const Configuration = () => {
       // For MT5 config removal, don't merge - use the new config as-is
       let mergedConfig = newConfig;
       
-      await fetch('http://127.0.0.1:5000/api/settings', {
+      await fetch('http://localhost:5000/api/settings', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -347,7 +347,7 @@ const Configuration = () => {
     // Direct API call to save without merging
     try {
       const token = localStorage.getItem('authToken');
-      await fetch('http://127.0.0.1:5000/api/settings', {
+      await fetch('http://localhost:5000/api/settings', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
