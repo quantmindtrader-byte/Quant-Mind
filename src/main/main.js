@@ -223,11 +223,15 @@ class TradingAppManager {
         }
         
         // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
+        console.log(`DEBUG: User plan: ${userPlan}`);
+        const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
+        if (!isPaidUser) {
           const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'start-bot');
           if (!adWatched) {
             return { success: false, error: 'Ad required to start bot. Please watch the ad or upgrade to Premium.' };
           }
+        } else {
+          console.log(`DEBUG: Paid user (${userPlan}) - skipping ads`);
         }
         
         // Get auth token from localStorage if available
@@ -307,7 +311,8 @@ class TradingAppManager {
         }
         
         // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
+        const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
+        if (!isPaidUser) {
           const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
           if (!adWatched) {
             return { success: false, error: 'Ad required for force reanalysis. Please watch the ad or upgrade to Premium.' };
@@ -459,7 +464,8 @@ class TradingAppManager {
               }
               
               // Skip ads for paid users
-              if (['Starter', 'Pro', 'Elite'].includes(userPlan)) {
+              const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
+              if (isPaidUser) {
                 this.sendToRenderer('menu-action', 'force-reanalysis');
               } else {
                 const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
