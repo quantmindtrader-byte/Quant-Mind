@@ -65,7 +65,7 @@ export function AppProvider({ children }) {
   const fetchLogs = async () => {
     try {
       dispatch({ type: 'SET_LOGS_FETCHING', payload: true });
-      const response = await fetch('http://127.0.0.1:5000/api/logs');
+      const response = await fetch('http://localhost:5000/api/logs');
       if (response.ok) {
         const data = await response.json();
         dispatch({ type: 'SET_LOGS', payload: data.logs || [] });
@@ -199,7 +199,7 @@ export function AppProvider({ children }) {
   const fetchUserProfile = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/user/dashboard', {
+      const response = await fetch('http://localhost:5000/api/user/dashboard', {
         headers: {
           'Authorization': `Bearer ${token}`
         }

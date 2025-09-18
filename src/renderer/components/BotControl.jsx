@@ -13,7 +13,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
     const loadConfigs = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/settings', {
+        const response = await fetch('http://localhost:5000/api/settings', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -69,7 +69,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
       const token = localStorage.getItem('authToken');
       try {
         // Get current backend config first
-        const currentResponse = await fetch('http://127.0.0.1:5000/api/settings', {
+        const currentResponse = await fetch('http://localhost:5000/api/settings', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -83,7 +83,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
           };
         }
         
-        await fetch('http://127.0.0.1:5000/api/settings', {
+        await fetch('http://localhost:5000/api/settings', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
