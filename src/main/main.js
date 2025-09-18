@@ -8,6 +8,7 @@ const { io } = require('socket.io-client');
 // Configure auto-updater
 autoUpdater.autoDownload = true;
 autoUpdater.autoInstallOnAppQuit = true;
+autoUpdater.checkForUpdatesAndNotify();
 
 class TradingAppManager {
   constructor() {
@@ -225,13 +226,15 @@ class TradingAppManager {
         // Skip ads for paid users
         console.log(`DEBUG: User plan: ${userPlan}`);
         const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-        if (!isPaidUser) {
+        
+        if (isPaidUser) {
+          console.log(`DEBUG: Paid user (${userPlan}) - skipping ads completely`);
+        } else {
+          console.log(`DEBUG: Free user (${userPlan}) - showing ad`);
           const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'start-bot');
           if (!adWatched) {
             return { success: false, error: 'Ad required to start bot. Please watch the ad or upgrade to Premium.' };
           }
-        } else {
-          console.log(`DEBUG: Paid user (${userPlan}) - skipping ads`);
         }
         
         // Get auth token from localStorage if available
@@ -312,7 +315,10 @@ class TradingAppManager {
         
         // Skip ads for paid users
         const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-        if (!isPaidUser) {
+        
+        if (isPaidUser) {
+          console.log(`DEBUG: Paid user (${userPlan}) - skipping force-reanalysis ads`);
+        } else {
           const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
           if (!adWatched) {
             return { success: false, error: 'Ad required for force reanalysis. Please watch the ad or upgrade to Premium.' };
@@ -390,10 +396,16 @@ class TradingAppManager {
           console.log('DEBUG: No auth token found');
         }
         
-        const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, action);
+        // Skip ads for paid users
+        const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
         
-        if (!adWatched) {
-          return { success: false, error: 'Ad required to save configuration. Please watch the ad or upgrade to Premium.' };
+        if (isPaidUser) {
+          console.log(`DEBUG: Paid user (${userPlan}) - skipping save-config ads`);
+        } else {
+          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, action);
+          if (!adWatched) {
+            return { success: false, error: 'Ad required to save configuration. Please watch the ad or upgrade to Premium.' };
+          }
         }
         
         return { success: true, canProceed: true };
@@ -465,7 +477,9 @@ class TradingAppManager {
               
               // Skip ads for paid users
               const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
+              
               if (isPaidUser) {
+                console.log(`DEBUG: Paid user (${userPlan}) - skipping menu force-reanalysis ads`);
                 this.sendToRenderer('menu-action', 'force-reanalysis');
               } else {
                 const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
@@ -568,8 +582,11 @@ class TradingAppManager {
       }
     });
 
-    // Check for updates on startup
+    // Check for updates on startup and every 30 minutes
     autoUpdater.checkForUpdatesAndNotify();
+    setInterval(() => {
+      autoUpdater.checkForUpdatesAndNotify();
+    }, 30 * 60 * 1000); // 30 minutes
   }
 
   async initialize() {
