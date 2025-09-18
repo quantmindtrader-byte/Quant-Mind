@@ -3,11 +3,9 @@ import { useApp } from '../context/AppContext';
 
 // Component to handle individual symbol input with proper state management
 const SymbolInput = React.memo(({ value, index, onUpdate, onRemove }) => {
-  const [localValue, setLocalValue] = useState(value);
-
   const handleChange = (e) => {
     const newValue = e.target.value.toUpperCase();
-    setLocalValue(newValue);
+    console.log('DEBUG: SymbolInput onChange:', index, newValue);
     onUpdate(index, newValue);
   };
 
@@ -15,7 +13,7 @@ const SymbolInput = React.memo(({ value, index, onUpdate, onRemove }) => {
     <div className="flex items-center space-x-2">
       <input
         type="text"
-        value={localValue}
+        value={value || ''}
         onChange={handleChange}
         className="input-field flex-1"
         placeholder="Symbol (e.g., EURUSD)"
@@ -23,6 +21,7 @@ const SymbolInput = React.memo(({ value, index, onUpdate, onRemove }) => {
       <button
         onClick={(e) => {
           e.preventDefault();
+          console.log('DEBUG: SymbolInput remove:', index);
           onRemove(index);
         }}
         className="btn-danger px-2 py-1 text-sm"
@@ -123,12 +122,16 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
                 value={symbol}
                 index={index}
                 onUpdate={(idx, newValue) => {
+                  console.log('DEBUG: Symbol onUpdate called:', idx, newValue);
                   const newSymbols = [...(config.symbols || [])];
                   newSymbols[idx] = newValue;
+                  console.log('DEBUG: New symbols array:', newSymbols);
                   onConfigChange('symbols', newSymbols);
                 }}
                 onRemove={(idx) => {
+                  console.log('DEBUG: Symbol onRemove called:', idx);
                   const newSymbols = (config.symbols || []).filter((_, i) => i !== idx);
+                  console.log('DEBUG: New symbols array after remove:', newSymbols);
                   onConfigChange('symbols', newSymbols);
                 }}
               />
@@ -149,6 +152,7 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
                 }
                 
                 const newSymbols = [...(config.symbols || []), ''];
+                console.log('DEBUG: Add Symbol button clicked, new symbols:', newSymbols);
                 onConfigChange('symbols', newSymbols);
               }}
               className={`btn-secondary text-sm ${
@@ -343,66 +347,39 @@ const Configuration = () => {
       return;
     }
 
-    const newConfig = {
-      ...config,
-      mt5_configs: {
-        ...config.mt5_configs,
-        [newMT5Config.name]: {
-          path: newMT5Config.path,
-          login: parseInt(newMT5Config.login),
-          password: newMT5Config.password,
-          server: newMT5Config.server
-        }
+    const newMT5Configs = {
+      ...config.mt5_configs,
+      [newMT5Config.name]: {
+        path: newMT5Config.path,
+        login: parseInt(newMT5Config.login),
+        password: newMT5Config.password,
+        server: newMT5Config.server
       }
     };
 
-    setConfig(newConfig);
-    actions.setConfig(newConfig);
-    localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    // Use handleDirectConfigChange for auto-save
+    handleDirectConfigChange('mt5_configs', newMT5Configs);
     setNewMT5Config({ name: '', path: '', login: '', password: '', server: '' });
     
     actions.addNotification({
-      type: 'info',
+      type: 'success',
       title: 'Configuration Added',
-      message: `MT5 configuration "${newMT5Config.name}" added. Click Save to persist changes.`
+      message: `MT5 configuration "${newMT5Config.name}" added and saved automatically.`
     });
   };
 
-  const handleRemoveMT5Config = async (configName) => {
-    const newConfig = {
-      ...config,
-      mt5_configs: { ...config.mt5_configs }
-    };
-    delete newConfig.mt5_configs[configName];
+  const handleRemoveMT5Config = (configName) => {
+    const newMT5Configs = { ...config.mt5_configs };
+    delete newMT5Configs[configName];
     
-    setConfig(newConfig);
-    actions.setConfig(newConfig);
-    localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    // Use handleDirectConfigChange for auto-save
+    handleDirectConfigChange('mt5_configs', newMT5Configs);
     
-    // Direct API call to save without merging
-    try {
-      const token = localStorage.getItem('authToken');
-      await fetch('http://localhost:5000/api/settings', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newConfig)
-      });
-      
-      actions.addNotification({
-        type: 'success',
-        title: 'Configuration Removed',
-        message: `MT5 configuration "${configName}" has been removed and saved.`
-      });
-    } catch (error) {
-      actions.addNotification({
-        type: 'error',
-        title: 'Save Error',
-        message: `Failed to save removal: ${error.message}`
-      });
-    }
+    actions.addNotification({
+      type: 'success',
+      title: 'Configuration Removed',
+      message: `MT5 configuration "${configName}" has been removed and saved automatically.`
+    });
   };
 
   const handleBrowseFile = async () => {
@@ -678,8 +655,7 @@ const Configuration = () => {
             <div className="flex space-x-3">
               <button
                 onClick={() => {
-                  localStorage.removeItem('tradingConfig');
-                  setConfig({
+                  const defaultConfig = {
                     mt5_configs: {},
                     symbols: [],
                     risk_per_trade: 2.0,
@@ -694,11 +670,19 @@ const Configuration = () => {
                     max_risk_per_trade: 2.0,
                     weekly_profit_target: 15.0,
                     weekly_loss_limit: 10.0
-                  });
+                  };
+                  
+                  localStorage.removeItem('tradingConfig');
+                  setConfig(defaultConfig);
+                  actions.setConfig(defaultConfig);
+                  
+                  // Auto-save the reset configuration
+                  saveConfigToBackend(defaultConfig, false);
+                  
                   actions.addNotification({
                     type: 'info',
                     title: 'Configuration Reset',
-                    message: 'All settings have been reset to defaults.'
+                    message: 'All settings have been reset to defaults and saved automatically.'
                   });
                 }}
                 className="btn-secondary"
