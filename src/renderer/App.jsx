@@ -7,6 +7,7 @@ import RealTimeData from './components/RealTimeData';
 import Authentication from './components/Authentication';
 import UpdateNotification from './components/UpdateNotification';
 import { AppProvider } from './context/AppContext';
+import api from './utils/api';
 
 function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -85,30 +86,22 @@ function App() {
     
     // Fetch user profile with subscription info
     try {
-      const response = await fetch('http://localhost:5000/api/user/profile', {
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
-      
-      if (response.ok) {
-        const profileData = await response.json();
-        if (profileData.success) {
-          const userWithSubscription = {
-            ...user,
-            subscription: {
-              plan: profileData.user.role?.name || 'Starter',
-              limits: profileData.user.role?.limits || {},
-              usage: profileData.user.usage || {}
-            }
-          };
-          
-          localStorage.setItem('user', JSON.stringify(userWithSubscription));
-          
-          // Update AppContext with complete user info
-          if (window.appActions) {
-            window.appActions.setUser(userWithSubscription);
+      const profileData = await api.get('/api/user/profile');
+      if (profileData.success) {
+        const userWithSubscription = {
+          ...user,
+          subscription: {
+            plan: profileData.user.role?.name || 'Starter',
+            limits: profileData.user.role?.limits || {},
+            usage: profileData.user.usage || {}
           }
+        };
+        
+        localStorage.setItem('user', JSON.stringify(userWithSubscription));
+        
+        // Update AppContext with complete user info
+        if (window.appActions) {
+          window.appActions.setUser(userWithSubscription);
         }
       }
     } catch (error) {

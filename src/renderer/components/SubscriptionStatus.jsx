@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import api from '../utils/api';
 
 const SubscriptionStatus = ({ user }) => {
   const [usage, setUsage] = useState(null);
@@ -12,11 +13,7 @@ const SubscriptionStatus = ({ user }) => {
 
   const fetchUsage = async () => {
     try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:5000/api/saas/usage', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await response.json();
+      const data = await api.get('/api/saas/usage');
       if (data.current_usage && data.plan) {
         setUsage(data);
       }

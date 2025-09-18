@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
+import api from '../utils/api';
 
 const Dashboard = ({ appStatus }) => {
   const { state } = useApp();
@@ -19,20 +20,13 @@ const Dashboard = ({ appStatus }) => {
 
   const fetchTradingStats = async (period = 'daily', startDate = null, endDate = null) => {
     try {
-      const token = localStorage.getItem('authToken');
-      let url = `http://localhost:5000/api/user/trading-statistics?period=${period}`;
+      let endpoint = `/api/user/trading-statistics?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
-        url += `&start_date=${startDate}&end_date=${endDate}`;
+        endpoint += `&start_date=${startDate}&end_date=${endDate}`;
       }
       
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTradingStats(data);
-      }
+      const data = await api.get(endpoint);
+      setTradingStats(data);
     } catch (error) {
       console.error('Failed to fetch trading stats:', error);
     }
@@ -40,15 +34,8 @@ const Dashboard = ({ appStatus }) => {
 
   const fetchTodayStats = async () => {
     try {
-      const token = localStorage.getItem('authToken');
-      const response = await fetch('http://localhost:5000/api/user/trading-statistics?period=daily', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTodayStats(data);
-      }
+      const data = await api.get('/api/user/trading-statistics?period=daily');
+      setTodayStats(data);
     } catch (error) {
       console.error('Failed to fetch today stats:', error);
     }
@@ -56,20 +43,13 @@ const Dashboard = ({ appStatus }) => {
 
   const fetchTradeHistory = async (period = 'daily', startDate = null, endDate = null) => {
     try {
-      const token = localStorage.getItem('authToken');
-      let url = `http://localhost:5000/api/user/trade-history?period=${period}`;
+      let endpoint = `/api/user/trade-history?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
-        url += `&start_date=${startDate}&end_date=${endDate}`;
+        endpoint += `&start_date=${startDate}&end_date=${endDate}`;
       }
       
-      const response = await fetch(url, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        setTradeHistory(data.trades);
-      }
+      const data = await api.get(endpoint);
+      setTradeHistory(data.trades);
     } catch (error) {
       console.error('Failed to fetch trade history:', error);
     }
@@ -78,16 +58,8 @@ const Dashboard = ({ appStatus }) => {
   useEffect(() => {
     const fetchStats = async () => {
       try {
-        const token = localStorage.getItem('authToken');
-        
-        // Load daily limits
-        const limitsResponse = await fetch('http://localhost:5000/api/user/trading-limits', {
-          headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (limitsResponse.ok) {
-          const limits = await limitsResponse.json();
-          setDailyLimits(limits);
-        }
+        const limits = await api.get('/api/user/trading-limits');
+        setDailyLimits(limits);
       } catch (error) {
         console.error('Failed to fetch stats:', error);
       }
