@@ -4,6 +4,10 @@
   "description": "QuantMind Trading Desktop Application",
   "author": "QuantMind",
   "main": "src/main/main.js",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/quantmindtrader-byte/Quant-Mind.git"
+  },
   "scripts": {
     "start": "electron src/main/main.js",
     "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
@@ -66,14 +70,11 @@
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true
     },
+    "forceCodeSigning": false,
     "publish": {
       "provider": "github",
       "owner": "quantmindtrader-byte",
       "repo": "Quant-Mind"
-    },
-    "repository": {
-      "type": "git",
-      "url": "https://github.com/quantmindtrader-byte/Quant-Mind.git"
     }
   }
 }
