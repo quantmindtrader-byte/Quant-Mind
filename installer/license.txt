@@ -1,0 +1,29 @@
+QuantMind Desktop Application License Agreement
+
+Copyright (c) 2024 QuantMind. All rights reserved.
+
+END-USER LICENSE AGREEMENT (EULA)
+
+This End-User License Agreement ("EULA") is a legal agreement between you and QuantMind for the QuantMind Desktop software application.
+
+By installing, copying, or otherwise using QuantMind Desktop, you agree to be bound by the terms of this EULA.
+
+GRANT OF LICENSE
+QuantMind grants you a personal, non-transferable, non-exclusive license to use QuantMind Desktop on your devices in accordance with the terms of this EULA.
+
+RESTRICTIONS
+You may not:
+- Reverse engineer, decompile, or disassemble the software
+- Remove any proprietary notices or labels
+- Distribute, rent, lease, or sublicense the software
+
+DISCLAIMER OF WARRANTIES
+The software is provided "AS IS" without warranty of any kind.
+
+LIMITATION OF LIABILITY
+In no event shall QuantMind be liable for any damages arising out of the use of this software.
+
+TERMINATION
+This license is effective until terminated. Your rights under this license will terminate automatically without notice if you fail to comply with any term(s) of this EULA.
+
+By clicking "I Agree" below, you acknowledge that you have read this agreement and agree to be bound by its terms.
