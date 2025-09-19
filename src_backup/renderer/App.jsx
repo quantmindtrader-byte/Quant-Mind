@@ -5,8 +5,9 @@ import BotControl from './components/BotControl';
 import Configuration from './components/Configuration';
 import RealTimeData from './components/RealTimeData';
 import Authentication from './components/Authentication';
-import NotificationDisplay from './components/NotificationDisplay';
+import UpdateNotification from './components/UpdateNotification';
 import { AppProvider } from './context/AppContext';
+import { testConnection } from './utils/api';
 
 function App() {
   const [currentView, setCurrentView] = useState('dashboard');
@@ -25,32 +26,30 @@ function App() {
       setIsAuthenticated(true);
     }
 
-    // Get initial app status and reset bot status on startup
-    const checkAppStatus = async () => {
-      if (window.electronAPI) {
-        try {
-          const status = await window.electronAPI.getAppStatus();
-          setAppStatus(prev => ({
-            ...prev,
-            backend: status.backendConnected || true,
-            agent: false, // Always start with bot stopped
-            backendPort: 5000,
-            wsPort: 5000
-          }));
-        } catch (error) {
-          console.error('Failed to get app status:', error);
-          setAppStatus(prev => ({
-            ...prev,
-            backend: false,
-            agent: false,
-            backendPort: 5000,
-            wsPort: 5000
-          }));
+    // Test backend connection
+    const checkBackendConnection = async () => {
+      try {
+        const isConnected = await testConnection();
+        setAppStatus(prev => ({
+          ...prev,
+          backend: isConnected,
+          backendPort: 5000,
+          wsPort: 5000
+        }));
+        
+        if (!isConnected) {
+          console.error('Backend connection failed - please ensure the backend server is running on port 5000');
         }
+      } catch (error) {
+        console.error('Backend connection test failed:', error);
+        setAppStatus(prev => ({ ...prev, backend: false }));
       }
     };
     
-    checkAppStatus();
+    checkBackendConnection();
+    
+    // Check connection every 30 seconds
+    const connectionInterval = setInterval(checkBackendConnection, 30000);
 
     // Set up menu action listeners
     if (window.electronAPI) {
@@ -62,6 +61,9 @@ function App() {
     return () => {
       if (window.electronAPI) {
         window.electronAPI.removeAllListeners('menu-action');
+      }
+      if (connectionInterval) {
+        clearInterval(connectionInterval);
       }
     };
   }, []);
@@ -93,7 +95,7 @@ function App() {
     
     // Fetch user profile with subscription info
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/user/profile', {
+      const response = await fetch('http://localhost:5000/api/user/profile', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -170,7 +172,7 @@ function App() {
         <main className="flex-1 overflow-hidden">
           {renderCurrentView()}
         </main>
-        <NotificationDisplay />
+        <UpdateNotification />
       </div>
     </AppProvider>
   );

@@ -67,19 +67,14 @@ class AdManager {
   }
 
   async checkUserPlanAndShowAd(userPlan, action = 'continue') {
-    console.log(`AdManager: Checking user plan: ${userPlan} for action: ${action}`);
-    // TEMPORARY: Disable all ads to prevent blank windows
-    console.log(`AdManager: Ads temporarily disabled - allowing ${action} for all users`);
-    return true;
-    
-    // Check if user has a paid plan (anything other than Free)
-    const isPaidUser = userPlan && userPlan !== 'Free' && userPlan !== 'free' && userPlan.toLowerCase() !== 'free';
-    if (isPaidUser) {
-      console.log(`AdManager: Paid user (${userPlan}) - skipping ad`);
+    console.log(`AdManager: Checking user plan: ${userPlan}`);
+    // All paid plans skip ads
+    if (['Starter', 'Pro', 'Elite'].includes(userPlan)) {
+      console.log('AdManager: Paid user - skipping ad');
       return true;
     }
     // Only Free users see ads
-    console.log(`AdManager: Free user (${userPlan}) - showing ad`);
+    console.log('AdManager: Free user - showing ad');
     return await this.showRewardedAd(action);
   }
 

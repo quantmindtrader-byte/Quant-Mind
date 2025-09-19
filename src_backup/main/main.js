@@ -1,8 +1,53 @@
-const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, dialog, net } = require('electron');
+const { autoUpdater } = require('electron-updater');
 const path = require('path');
 const adManager = require('./adManager');
+const https = require('https');
+const http = require('http');
 
 const { io } = require('socket.io-client');
+
+// Configure auto-updater
+autoUpdater.checkForUpdatesAndNotify();
+autoUpdater.autoDownload = true;
+autoUpdater.autoInstallOnAppQuit = true;
+
+// Auto-updater events
+autoUpdater.on('checking-for-update', () => {
+  console.log('Checking for update...');
+});
+
+autoUpdater.on('update-available', (info) => {
+  console.log('Update available:', info.version);
+  if (appManager.mainWindow) {
+    appManager.mainWindow.webContents.send('update-available', info);
+  }
+});
+
+autoUpdater.on('update-not-available', (info) => {
+  console.log('Update not available:', info.version);
+});
+
+autoUpdater.on('error', (err) => {
+  console.log('Error in auto-updater:', err);
+});
+
+autoUpdater.on('download-progress', (progressObj) => {
+  let log_message = "Download speed: " + progressObj.bytesPerSecond;
+  log_message = log_message + ' - Downloaded ' + progressObj.percent + '%';
+  log_message = log_message + ' (' + progressObj.transferred + "/" + progressObj.total + ')';
+  console.log(log_message);
+  if (appManager.mainWindow) {
+    appManager.mainWindow.webContents.send('update-downloading', progressObj);
+  }
+});
+
+autoUpdater.on('update-downloaded', (info) => {
+  console.log('Update downloaded:', info.version);
+  if (appManager.mainWindow) {
+    appManager.mainWindow.webContents.send('update-ready', info);
+  }
+});
 
 class TradingAppManager {
   constructor() {
@@ -32,7 +77,9 @@ class TradingAppManager {
         nodeIntegration: false,
         contextIsolation: true,
         preload: path.join(__dirname, 'preload.js'),
-        webSecurity: false // Allow external resources
+        webSecurity: false, // Allow external resources
+        allowRunningInsecureContent: true,
+        experimentalFeatures: true
       },
       titleBarStyle: 'hiddenInset',
       show: true
@@ -41,7 +88,7 @@ class TradingAppManager {
     // Load the React app
     const tryLoadApp = async () => {
       try {
-        await this.mainWindow.loadURL('http://127.0.0.1:5173');
+        await this.mainWindow.loadURL('http://localhost:5173');
         console.log('Connected to React app on port 5173');
         this.mainWindow.webContents.openDevTools();
         return;
@@ -65,80 +112,142 @@ class TradingAppManager {
   }
 
   async checkBackendConnection() {
-    try {
-      console.log(`Attempting to connect to: ${this.backendUrl}`);
-      const response = await fetch(`${this.backendUrl}/`, {
-        method: 'GET',
-        timeout: 5000
-      });
-      console.log(`Backend response status: ${response.status}`);
-      const text = await response.text();
-      console.log(`Backend response: ${text}`);
-      return response.ok;
-    } catch (error) {
-      console.error('Backend connection failed:', error.message);
-      console.error('Error details:', error);
-      return false;
-    }
+    return new Promise((resolve) => {
+      try {
+        console.log(`Attempting to connect to: ${this.backendUrl}`);
+        
+        const request = net.request({
+          method: 'GET',
+          url: `${this.backendUrl}/api/test`
+        });
+        
+        request.on('response', (response) => {
+          console.log(`Backend response status: ${response.statusCode}`);
+          if (response.statusCode === 200) {
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        });
+        
+        request.on('error', (error) => {
+          console.error('Backend connection failed:', error.message);
+          resolve(false);
+        });
+        
+        request.setTimeout(5000, () => {
+          console.error('Backend connection timeout');
+          resolve(false);
+        });
+        
+        request.end();
+      } catch (error) {
+        console.error('Backend connection error:', error);
+        resolve(false);
+      }
+    });
   }
 
   async startTradingAgent(config) {
-    try {
-      console.log('Bot start requested with config:', config);
-      
-      const headers = {
-        'Content-Type': 'application/json'
-      };
-      
-      // Add auth token if available
-      if (config.AUTH_TOKEN) {
-        headers['Authorization'] = `Bearer ${config.AUTH_TOKEN}`;
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('Bot start requested with config:', config);
+        
+        const request = net.request({
+          method: 'POST',
+          url: `${this.backendUrl}/api/bot/start`
+        });
+        
+        request.setHeader('Content-Type', 'application/json');
+        
+        // Add auth token if available
+        if (config.AUTH_TOKEN) {
+          request.setHeader('Authorization', `Bearer ${config.AUTH_TOKEN}`);
+        }
+        
+        let responseData = '';
+        
+        request.on('response', (response) => {
+          response.on('data', (chunk) => {
+            responseData += chunk;
+          });
+          
+          response.on('end', () => {
+            try {
+              const result = JSON.parse(responseData);
+              if (result.success) {
+                this.sendToRenderer('bot-started', result);
+                resolve(result);
+              } else {
+                reject(new Error(result.error || 'Failed to start bot'));
+              }
+            } catch (parseError) {
+              reject(new Error('Invalid response from server'));
+            }
+          });
+        });
+        
+        request.on('error', (error) => {
+          console.error('Failed to start trading agent:', error);
+          this.sendToRenderer('agent-error', error.message);
+          reject(error);
+        });
+        
+        request.write(JSON.stringify(config));
+        request.end();
+      } catch (error) {
+        console.error('Failed to start trading agent:', error);
+        this.sendToRenderer('agent-error', error.message);
+        reject(error);
       }
-      
-      const response = await fetch(`${this.backendUrl}/api/bot/start`, {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(config)
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        this.sendToRenderer('bot-started', result);
-        return result;
-      } else {
-        throw new Error(result.error || 'Failed to start bot');
-      }
-    } catch (error) {
-      console.error('Failed to start trading agent:', error);
-      this.sendToRenderer('agent-error', error.message);
-      throw error;
-    }
+    });
   }
 
   async stopTradingAgent() {
-    try {
-      console.log('Bot stop requested');
-      
-      const response = await fetch(`${this.backendUrl}/api/bot/stop`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
-      });
-      
-      const result = await response.json();
-      
-      if (result.success) {
-        this.sendToRenderer('bot-stopped', result);
-        return result;
-      } else {
-        throw new Error(result.error || 'Failed to stop bot');
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('Bot stop requested');
+        
+        const request = net.request({
+          method: 'POST',
+          url: `${this.backendUrl}/api/bot/stop`
+        });
+        
+        request.setHeader('Content-Type', 'application/json');
+        
+        let responseData = '';
+        
+        request.on('response', (response) => {
+          response.on('data', (chunk) => {
+            responseData += chunk;
+          });
+          
+          response.on('end', () => {
+            try {
+              const result = JSON.parse(responseData);
+              if (result.success) {
+                this.sendToRenderer('bot-stopped', result);
+                resolve(result);
+              } else {
+                reject(new Error(result.error || 'Failed to stop bot'));
+              }
+            } catch (parseError) {
+              reject(new Error('Invalid response from server'));
+            }
+          });
+        });
+        
+        request.on('error', (error) => {
+          console.error('Failed to stop trading agent:', error);
+          reject(error);
+        });
+        
+        request.end();
+      } catch (error) {
+        console.error('Failed to stop trading agent:', error);
+        reject(error);
       }
-    } catch (error) {
-      console.error('Failed to stop trading agent:', error);
-      throw error;
-    }
+    });
   }
 
   setupSocketConnection() {
@@ -205,25 +314,22 @@ class TradingAppManager {
         let userPlan = 'Free';
         if (authToken) {
           try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-              const plan = await response.json();
-              userPlan = plan.plan_type || 'Free';
+            const planResponse = await this.mainWindow.webContents.executeJavaScript(`
+              fetch('${this.backendUrl}/api/user/plan', {
+                headers: { 'Authorization': 'Bearer ${authToken}' }
+              }).then(r => r.json()).catch(e => ({ error: e.message }))
+            `);
+            
+            if (planResponse && !planResponse.error) {
+              userPlan = planResponse.plan_type || 'Free';
             }
           } catch (error) {
             console.log('Failed to get user plan from database:', error);
           }
         }
         
-        // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'start-bot');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required to start bot. Please watch the ad or upgrade to Premium.' };
-          }
-        }
+        // ADS TEMPORARILY DISABLED - Skip all ad checks
+        console.log('Ad check bypassed for bot start');
         
         // Get auth token from localStorage if available
         const botAuthToken = await this.mainWindow.webContents.executeJavaScript(
@@ -257,8 +363,19 @@ class TradingAppManager {
     ipcMain.handle('get-app-status', async () => {
       const backendConnected = await this.checkBackendConnection();
       
-      // Always return bot as stopped on fresh app startup to avoid "already running" issues
+      // Check bot status
       let botStatus = { running: false, pid: null };
+      try {
+        const response = await fetch(`${this.backendUrl}/api/bot/status`);
+        if (response.ok) {
+          const result = await response.json();
+          if (result.success) {
+            botStatus = { running: result.running, pid: result.pid };
+          }
+        }
+      } catch (error) {
+        console.error('Failed to get bot status:', error);
+      }
       
       return {
         backendConnected,
@@ -278,25 +395,22 @@ class TradingAppManager {
         let userPlan = 'Free';
         if (authToken) {
           try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-              const plan = await response.json();
-              userPlan = plan.plan_type || 'Free';
+            const planResponse = await this.mainWindow.webContents.executeJavaScript(`
+              fetch('${this.backendUrl}/api/user/plan', {
+                headers: { 'Authorization': 'Bearer ${authToken}' }
+              }).then(r => r.json()).catch(e => ({ error: e.message }))
+            `);
+            
+            if (planResponse && !planResponse.error) {
+              userPlan = planResponse.plan_type || 'Free';
             }
           } catch (error) {
             console.log('Failed to get user plan from database:', error);
           }
         }
         
-        // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required for force reanalysis. Please watch the ad or upgrade to Premium.' };
-          }
-        }
+        // ADS TEMPORARILY DISABLED - Skip all ad checks
+        console.log('Ad check bypassed for force reanalysis');
         
         return { success: true, canProceed: true };
       } catch (error) {
@@ -318,6 +432,20 @@ class TradingAppManager {
       return result.filePaths[0] || null;
     });
 
+    // Auto-updater IPC handlers
+    ipcMain.handle('check-for-updates', async () => {
+      try {
+        const result = await autoUpdater.checkForUpdates();
+        return { success: true, updateInfo: result.updateInfo };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('quit-and-install', () => {
+      autoUpdater.quitAndInstall();
+    });
+
     // Add IPC handlers for ad-related actions
     ipcMain.handle('save-config-with-ad-check', async (event, configData, action) => {
       try {
@@ -336,17 +464,18 @@ class TradingAppManager {
         let userPlan = 'Free';
         if (authToken) {
           try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            console.log('DEBUG: API response status:', response.status);
-            if (response.ok) {
-              const plan = await response.json();
-              console.log('DEBUG: API response data:', plan);
-              userPlan = plan.plan_type || 'Free';
+            const planResponse = await this.mainWindow.webContents.executeJavaScript(`
+              fetch('${this.backendUrl}/api/user/plan', {
+                headers: { 'Authorization': 'Bearer ${authToken}' }
+              }).then(r => r.json()).catch(e => ({ error: e.message }))
+            `);
+            
+            console.log('DEBUG: API response data:', planResponse);
+            if (planResponse && !planResponse.error) {
+              userPlan = planResponse.plan_type || 'Free';
               console.log('DEBUG: Final user plan:', userPlan);
             } else {
-              console.log('DEBUG: API response not OK:', await response.text());
+              console.log('DEBUG: API response error:', planResponse?.error);
             }
           } catch (error) {
             console.log('Failed to get user plan from database:', error);
@@ -355,11 +484,8 @@ class TradingAppManager {
           console.log('DEBUG: No auth token found');
         }
         
-        const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, action);
-        
-        if (!adWatched) {
-          return { success: false, error: 'Ad required to save configuration. Please watch the ad or upgrade to Premium.' };
-        }
+        // ADS TEMPORARILY DISABLED - Skip all ad checks
+        console.log('Ad check bypassed for save config');
         
         return { success: true, canProceed: true };
       } catch (error) {
@@ -416,27 +542,50 @@ class TradingAppManager {
               let userPlan = 'Free';
               if (authToken) {
                 try {
-                  const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                  });
-                  if (response.ok) {
-                    const plan = await response.json();
-                    userPlan = plan.plan_type || 'Free';
+                  const planResponse = await this.mainWindow.webContents.executeJavaScript(`
+                    fetch('${this.backendUrl}/api/user/plan', {
+                      headers: { 'Authorization': 'Bearer ${authToken}' }
+                    }).then(r => r.json()).catch(e => ({ error: e.message }))
+                  `);
+                  
+                  if (planResponse && !planResponse.error) {
+                    userPlan = planResponse.plan_type || 'Free';
                   }
                 } catch (error) {
                   console.log('Failed to get user plan from database:', error);
                 }
               }
               
-              // Skip ads for paid users
-              if (['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-                this.sendToRenderer('menu-action', 'force-reanalysis');
-              } else {
-                const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-                if (adWatched) {
-                  this.sendToRenderer('menu-action', 'force-reanalysis');
-                }
+              // ADS TEMPORARILY DISABLED - Skip all ad checks
+              console.log('Ad check bypassed for menu force reanalysis');
+              this.sendToRenderer('menu-action', 'force-reanalysis');
+            }
+          }
+        ]
+      },
+      {
+        label: 'Help',
+        submenu: [
+          {
+            label: 'Check for Updates',
+            click: async () => {
+              try {
+                await autoUpdater.checkForUpdatesAndNotify();
+              } catch (error) {
+                console.error('Update check failed:', error);
               }
+            }
+          },
+          { type: 'separator' },
+          {
+            label: 'About',
+            click: () => {
+              dialog.showMessageBox(this.mainWindow, {
+                type: 'info',
+                title: 'About QuantMind Desktop',
+                message: 'QuantMind Desktop',
+                detail: `Version: ${app.getVersion()}\nElectron: ${process.versions.electron}\nNode: ${process.versions.node}`
+              });
             }
           }
         ]
@@ -467,26 +616,6 @@ class TradingAppManager {
     }
   }
 
-  async clearPreviousSession() {
-    try {
-      // Clear backend logs
-      await fetch(`${this.backendUrl}/api/logs/clear`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      // Stop any running bot processes
-      await fetch(`${this.backendUrl}/api/bot/stop`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      console.log('Previous session data cleared');
-    } catch (error) {
-      console.log('Failed to clear previous session data:', error.message);
-    }
-  }
-
   async initialize() {
     await this.createWindow();
     this.setupIPC();
@@ -497,8 +626,6 @@ class TradingAppManager {
     const connected = await this.checkBackendConnection();
     if (connected) {
       console.log('Successfully connected to remote backend');
-      // Clear previous session data
-      await this.clearPreviousSession();
     } else {
       console.warn('Failed to connect to remote backend');
     }

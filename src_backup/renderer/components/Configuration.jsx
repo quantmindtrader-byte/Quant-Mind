@@ -3,11 +3,9 @@ import { useApp } from '../context/AppContext';
 
 // Component to handle individual symbol input with proper state management
 const SymbolInput = React.memo(({ value, index, onUpdate, onRemove }) => {
-  const [localValue, setLocalValue] = useState(value);
-
   const handleChange = (e) => {
     const newValue = e.target.value.toUpperCase();
-    setLocalValue(newValue);
+    console.log('DEBUG: SymbolInput onChange:', index, newValue);
     onUpdate(index, newValue);
   };
 
@@ -15,7 +13,7 @@ const SymbolInput = React.memo(({ value, index, onUpdate, onRemove }) => {
     <div className="flex items-center space-x-2">
       <input
         type="text"
-        value={localValue}
+        value={value || ''}
         onChange={handleChange}
         className="input-field flex-1"
         placeholder="Symbol (e.g., EURUSD)"
@@ -23,6 +21,7 @@ const SymbolInput = React.memo(({ value, index, onUpdate, onRemove }) => {
       <button
         onClick={(e) => {
           e.preventDefault();
+          console.log('DEBUG: SymbolInput remove:', index);
           onRemove(index);
         }}
         className="btn-danger px-2 py-1 text-sm"
@@ -95,7 +94,7 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
     const fetchLimits = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/user/trading-limits', {
+        const response = await fetch('http://localhost:5000/api/user/trading-limits', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -123,12 +122,16 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
                 value={symbol}
                 index={index}
                 onUpdate={(idx, newValue) => {
+                  console.log('DEBUG: Symbol onUpdate called:', idx, newValue);
                   const newSymbols = [...(config.symbols || [])];
                   newSymbols[idx] = newValue;
+                  console.log('DEBUG: New symbols array:', newSymbols);
                   onConfigChange('symbols', newSymbols);
                 }}
                 onRemove={(idx) => {
+                  console.log('DEBUG: Symbol onRemove called:', idx);
                   const newSymbols = (config.symbols || []).filter((_, i) => i !== idx);
+                  console.log('DEBUG: New symbols array after remove:', newSymbols);
                   onConfigChange('symbols', newSymbols);
                 }}
               />
@@ -149,6 +152,7 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
                 }
                 
                 const newSymbols = [...(config.symbols || []), ''];
+                console.log('DEBUG: Add Symbol button clicked, new symbols:', newSymbols);
                 onConfigChange('symbols', newSymbols);
               }}
               className={`btn-secondary text-sm ${
@@ -221,7 +225,7 @@ const Configuration = () => {
     const loadConfig = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/settings', {
+        const response = await fetch('http://localhost:5000/api/settings', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -239,46 +243,98 @@ const Configuration = () => {
   }, []);
 
   const saveConfigToBackend = async (newConfig, showAd = true) => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const userPlan = user.subscription?.plan_type || 'Free';
-    
-    if (showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-      setOriginalConfig(JSON.parse(JSON.stringify(config)));
-      const adResult = await window.electronAPI.saveConfigWithAdCheck(newConfig, 'save-config');
-      if (!adResult.success) {
-        if (originalConfig) {
-          setConfig(originalConfig);
-          actions.setConfig(originalConfig);
-          localStorage.setItem('tradingConfig', JSON.stringify(originalConfig));
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const userPlan = user.subscription?.plan_type || 'Free';
+      const token = localStorage.getItem('authToken');
+      
+      console.log('DEBUG: saveConfigToBackend called');
+      console.log('DEBUG: showAd:', showAd);
+      console.log('DEBUG: userPlan:', userPlan);
+      console.log('DEBUG: token available:', !!token);
+      console.log('DEBUG: config to save:', newConfig);
+      
+      if (showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan)) {
+        setOriginalConfig(JSON.parse(JSON.stringify(config)));
+        const adResult = await window.electronAPI.saveConfigWithAdCheck(newConfig, 'save-config');
+        if (!adResult.success) {
+          if (originalConfig) {
+            setConfig(originalConfig);
+            actions.setConfig(originalConfig);
+            localStorage.setItem('tradingConfig', JSON.stringify(originalConfig));
+          }
+          actions.addNotification({
+            type: 'error',
+            title: 'Save Cancelled',
+            message: 'Configuration reset - ad required to save changes'
+          });
+          return;
         }
-        throw new Error('Ad required to save changes');
       }
-      // Ad was watched successfully, continue to save
-    }
-    
-    const token = localStorage.getItem('authToken');
-    const response = await fetch('http://127.0.0.1:5000/api/settings', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(newConfig)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to save to database');
+      
+      if (!token) {
+        console.error('DEBUG: No auth token found');
+        throw new Error('Authentication required');
+      }
+      
+      console.log('DEBUG: Making API request to save config');
+      
+      const response = await fetch('http://localhost:5000/api/settings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(newConfig)
+      });
+      
+      console.log('DEBUG: Response status:', response.status);
+      console.log('DEBUG: Response ok:', response.ok);
+      
+      const result = await response.json();
+      console.log('DEBUG: Response data:', result);
+      
+      if (!response.ok) {
+        throw new Error(result.error || `HTTP ${response.status}: Failed to save settings`);
+      }
+      
+      if (!showAd) {
+        // Silent save for auto-save, only show notification on manual save
+        console.log('DEBUG: Settings auto-saved successfully');
+      } else {
+        actions.addNotification({
+          type: 'success',
+          title: 'Configuration Saved',
+          message: showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan) ? 'Thank you for watching the ad! Configuration saved successfully.' : 'Configuration saved successfully.'
+        });
+      }
+    } catch (error) {
+      console.error('DEBUG: Save error:', error);
+      actions.addNotification({
+        type: 'error',
+        title: 'Save Error',
+        message: `Failed to save configuration: ${error.message}`
+      });
     }
   };
 
   const handleDirectConfigChange = (key, value) => {
+    console.log('DEBUG: handleDirectConfigChange called:', key, value);
+    
     const newConfig = {
       ...config,
       [key]: value
     };
+    
+    console.log('DEBUG: New config created:', newConfig);
+    
     setConfig(newConfig);
     actions.setConfig(newConfig);
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    
+    // Auto-save to database for immediate persistence
+    console.log('DEBUG: Triggering auto-save for:', key, value);
+    saveConfigToBackend(newConfig, false);
   };
 
   const handleAddMT5Config = () => {
@@ -291,66 +347,39 @@ const Configuration = () => {
       return;
     }
 
-    const newConfig = {
-      ...config,
-      mt5_configs: {
-        ...config.mt5_configs,
-        [newMT5Config.name]: {
-          path: newMT5Config.path,
-          login: parseInt(newMT5Config.login),
-          password: newMT5Config.password,
-          server: newMT5Config.server
-        }
+    const newMT5Configs = {
+      ...config.mt5_configs,
+      [newMT5Config.name]: {
+        path: newMT5Config.path,
+        login: parseInt(newMT5Config.login),
+        password: newMT5Config.password,
+        server: newMT5Config.server
       }
     };
 
-    setConfig(newConfig);
-    actions.setConfig(newConfig);
-    localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    // Use handleDirectConfigChange for auto-save
+    handleDirectConfigChange('mt5_configs', newMT5Configs);
     setNewMT5Config({ name: '', path: '', login: '', password: '', server: '' });
     
     actions.addNotification({
-      type: 'info',
+      type: 'success',
       title: 'Configuration Added',
-      message: `MT5 configuration "${newMT5Config.name}" added. Click Save to persist changes.`
+      message: `MT5 configuration "${newMT5Config.name}" added and saved automatically.`
     });
   };
 
-  const handleRemoveMT5Config = async (configName) => {
-    const newConfig = {
-      ...config,
-      mt5_configs: { ...config.mt5_configs }
-    };
-    delete newConfig.mt5_configs[configName];
+  const handleRemoveMT5Config = (configName) => {
+    const newMT5Configs = { ...config.mt5_configs };
+    delete newMT5Configs[configName];
     
-    setConfig(newConfig);
-    actions.setConfig(newConfig);
-    localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    // Use handleDirectConfigChange for auto-save
+    handleDirectConfigChange('mt5_configs', newMT5Configs);
     
-    // Direct API call to save without merging
-    try {
-      const token = localStorage.getItem('authToken');
-      await fetch('http://127.0.0.1:5000/api/settings', {
-        method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(newConfig)
-      });
-      
-      actions.addNotification({
-        type: 'success',
-        title: 'Configuration Removed',
-        message: `MT5 configuration "${configName}" has been removed and saved.`
-      });
-    } catch (error) {
-      actions.addNotification({
-        type: 'error',
-        title: 'Save Error',
-        message: `Failed to save removal: ${error.message}`
-      });
-    }
+    actions.addNotification({
+      type: 'success',
+      title: 'Configuration Removed',
+      message: `MT5 configuration "${configName}" has been removed and saved automatically.`
+    });
   };
 
   const handleBrowseFile = async () => {
@@ -626,8 +655,7 @@ const Configuration = () => {
             <div className="flex space-x-3">
               <button
                 onClick={() => {
-                  localStorage.removeItem('tradingConfig');
-                  setConfig({
+                  const defaultConfig = {
                     mt5_configs: {},
                     symbols: [],
                     risk_per_trade: 2.0,
@@ -642,11 +670,19 @@ const Configuration = () => {
                     max_risk_per_trade: 2.0,
                     weekly_profit_target: 15.0,
                     weekly_loss_limit: 10.0
-                  });
+                  };
+                  
+                  localStorage.removeItem('tradingConfig');
+                  setConfig(defaultConfig);
+                  actions.setConfig(defaultConfig);
+                  
+                  // Auto-save the reset configuration
+                  saveConfigToBackend(defaultConfig, false);
+                  
                   actions.addNotification({
                     type: 'info',
                     title: 'Configuration Reset',
-                    message: 'All settings have been reset to defaults.'
+                    message: 'All settings have been reset to defaults and saved automatically.'
                   });
                 }}
                 className="btn-secondary"
@@ -655,20 +691,7 @@ const Configuration = () => {
               </button>
               <button
                 onClick={async () => {
-                  try {
-                    await saveConfigToBackend(config, true);
-                    actions.addNotification({
-                      type: 'success',
-                      title: 'Configuration Saved',
-                      message: 'Your trading configuration has been successfully saved to the database.'
-                    });
-                  } catch (error) {
-                    actions.addNotification({
-                      type: 'error',
-                      title: 'Save Failed',
-                      message: error.message === 'Ad required to save changes' ? 'Configuration reset - ad required to save changes' : 'Failed to save configuration to database. Please try again.'
-                    });
-                  }
+                  await saveConfigToBackend(config, true);
                 }}
                 className="btn-primary"
               >

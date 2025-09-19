@@ -2,7 +2,7 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('electronAPI', {
   // Backend management
-  startBackend: () => ipcRenderer.invoke('start-backend'),
+  checkBackend: () => ipcRenderer.invoke('check-backend'),
   startAgent: (config) => ipcRenderer.invoke('start-agent', config),
   stopAgent: () => ipcRenderer.invoke('stop-agent'),
   getAppStatus: () => ipcRenderer.invoke('get-app-status'),
@@ -14,21 +14,25 @@ contextBridge.exposeInMainWorld('electronAPI', {
   adCompleted: (watched) => ipcRenderer.send('ad-completed', watched),
   onSetAdContext: (callback) => ipcRenderer.on('set-ad-context', callback),
 
+  // Auto-updater
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  quitAndInstall: () => ipcRenderer.invoke('quit-and-install'),
+
   // Event listeners
-  onBackendLog: (callback) => ipcRenderer.on('backend-log', callback),
+  onBackendConnected: (callback) => ipcRenderer.on('backend-connected', callback),
+  onBackendDisconnected: (callback) => ipcRenderer.on('backend-disconnected', callback),
   onBackendError: (callback) => ipcRenderer.on('backend-error', callback),
-  onAgentLog: (callback) => ipcRenderer.on('agent-log', callback),
+  onBotStarted: (callback) => ipcRenderer.on('bot-started', callback),
+  onBotStopped: (callback) => ipcRenderer.on('bot-stopped', callback),
   onAgentError: (callback) => ipcRenderer.on('agent-error', callback),
   onMenuAction: (callback) => ipcRenderer.on('menu-action', callback),
-  onResetConfigAfterAdCancel: (callback) => ipcRenderer.on('reset-config-after-ad-cancel', callback),
+  onAnalyticsUpdate: (callback) => ipcRenderer.on('analytics-update', callback),
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
+  onUpdateDownloading: (callback) => ipcRenderer.on('update-downloading', callback),
+  onUpdateReady: (callback) => ipcRenderer.on('update-ready', callback),
 
   // Remove listeners
   removeAllListeners: (channel) => ipcRenderer.removeAllListeners(channel),
-
-  // WebSocket connection helper
-  createWebSocket: (port) => {
-    return new WebSocket(`ws://127.0.0.1:${port}`);
-  },
 
   // File dialog
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog')

@@ -13,7 +13,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
     const loadConfigs = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/settings', {
+        const response = await fetch('http://localhost:5000/api/settings', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -23,14 +23,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
           if (settings.mt5_configs) {
             const configs = Object.keys(settings.mt5_configs);
             setAvailableConfigs(configs);
-            
-            // Try to restore previously selected config
-            const savedConfig = localStorage.getItem('selectedMT5Config');
-            if (savedConfig && configs.includes(savedConfig)) {
-              setSelectedConfig(savedConfig);
-            } else if (settings.selected_mt5_config && configs.includes(settings.selected_mt5_config)) {
-              setSelectedConfig(settings.selected_mt5_config);
-            } else if (configs.length > 0 && !selectedConfig) {
+            if (configs.length > 0 && !selectedConfig) {
               setSelectedConfig(configs[0]);
             }
           }
@@ -39,15 +32,9 @@ const BotControl = ({ appStatus, setAppStatus }) => {
         console.error('Failed to load configs:', error);
         // Fallback to state config
         if (state.config?.mt5_configs) {
-          const configs = Object.keys(state.config.mt5_configs);
-          setAvailableConfigs(configs);
-          
-          // Try to restore previously selected config
-          const savedConfig = localStorage.getItem('selectedMT5Config');
-          if (savedConfig && configs.includes(savedConfig)) {
-            setSelectedConfig(savedConfig);
-          } else if (configs.length > 0 && !selectedConfig) {
-            setSelectedConfig(configs[0]);
+          setAvailableConfigs(Object.keys(state.config.mt5_configs));
+          if (availableConfigs.length > 0 && !selectedConfig) {
+            setSelectedConfig(availableConfigs[0]);
           }
         }
       }
@@ -72,21 +59,17 @@ const BotControl = ({ appStatus, setAppStatus }) => {
       const user = JSON.parse(localStorage.getItem('user') || '{}');
       console.log('Starting bot with config:', selectedConfig);
       const config = {
-        selected_mt5_config: selectedConfig,
         MT5_CONFIG: selectedConfig,
         SYMBOLS: JSON.stringify(state.config?.symbols || []),
         user_id: user.id  // Pass user ID for SaaS integration
       };
       console.log('Full config being passed:', config);
       
-      // Save selected config to localStorage for persistence
-      localStorage.setItem('selectedMT5Config', selectedConfig);
-      
       // Also save selected config to backend (preserve existing MT5 configs)
       const token = localStorage.getItem('authToken');
       try {
         // Get current backend config first
-        const currentResponse = await fetch('http://127.0.0.1:5000/api/settings', {
+        const currentResponse = await fetch('http://localhost:5000/api/settings', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -100,7 +83,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
           };
         }
         
-        await fetch('http://127.0.0.1:5000/api/settings', {
+        await fetch('http://localhost:5000/api/settings', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -119,7 +102,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
       actions.addNotification({
         type: 'success',
         title: 'Bot Started',
-        message: `Trading bot started with ${selectedConfig} configuration.`
+        message: 'Trading bot has been started successfully.'
       });
 
       // Update app status
@@ -221,23 +204,8 @@ const BotControl = ({ appStatus, setAppStatus }) => {
                 <p className={`text-xl font-semibold ${getStatusColor()}`}>
                   {state.tradingStatus.charAt(0).toUpperCase() + state.tradingStatus.slice(1)}
                 </p>
-                {state.tradingStatus === 'running' && selectedConfig && (
-                  <p className="text-xs text-gray-500 mt-1">Using: {selectedConfig}</p>
-                )}
               </div>
               <div className="text-2xl">{getStatusIcon()}</div>
-            </div>
-          </div>
-
-          <div className="card">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-gray-400 text-sm">Selected MT5 Config</p>
-                <p className="text-xl font-semibold text-white">
-                  {selectedConfig || 'None'}
-                </p>
-              </div>
-              <div className="text-2xl">⚙️</div>
             </div>
           </div>
 
@@ -250,6 +218,18 @@ const BotControl = ({ appStatus, setAppStatus }) => {
                 </p>
               </div>
               <div className="text-2xl">💱</div>
+            </div>
+          </div>
+
+          <div className="card">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-gray-400 text-sm">Backend Status</p>
+                <p className={`text-xl font-semibold ${appStatus.backend ? 'text-green-400' : 'text-red-400'}`}>
+                  {appStatus.backend ? 'Online' : 'Offline'}
+                </p>
+              </div>
+              <div className="text-2xl">{appStatus.backend ? '🟢' : '🔴'}</div>
             </div>
           </div>
         </div>
@@ -271,14 +251,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
                 </label>
                 <select
                   value={selectedConfig}
-                  onChange={(e) => {
-                    const newConfig = e.target.value;
-                    setSelectedConfig(newConfig);
-                    // Save to localStorage immediately
-                    if (newConfig) {
-                      localStorage.setItem('selectedMT5Config', newConfig);
-                    }
-                  }}
+                  onChange={(e) => setSelectedConfig(e.target.value)}
                   className="input-field w-full"
                   disabled={state.tradingStatus === 'running'}
                 >
@@ -386,10 +359,10 @@ const BotControl = ({ appStatus, setAppStatus }) => {
               {/* Quick Actions */}
               <div className="pt-4 border-t border-gray-700">
                 <p className="text-gray-400 text-sm mb-3">Quick Actions</p>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="flex space-x-2">
                   <button
                     onClick={() => actions.clearLogs()}
-                    className="py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                    className="flex-1 py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
                   >
                     Clear Logs
                   </button>
@@ -397,28 +370,9 @@ const BotControl = ({ appStatus, setAppStatus }) => {
                     onClick={() => {
                       state.notifications.forEach(n => actions.removeNotification(n.id));
                     }}
-                    className="py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
+                    className="flex-1 py-2 px-3 bg-gray-700 hover:bg-gray-600 text-white text-sm rounded-lg transition-colors"
                   >
                     Clear Notifications
-                  </button>
-                  <button
-                    onClick={() => {
-                      // Clear all frontend data
-                      actions.clearLogs();
-                      state.notifications.forEach(n => actions.removeNotification(n.id));
-                      actions.setTradingStatus('stopped');
-                      // Clear selected config
-                      localStorage.removeItem('selectedMT5Config');
-                      setSelectedConfig('');
-                      actions.addNotification({
-                        type: 'info',
-                        title: 'Data Cleared',
-                        message: 'All session data has been cleared.'
-                      });
-                    }}
-                    className="col-span-2 py-2 px-3 bg-red-700 hover:bg-red-600 text-white text-sm rounded-lg transition-colors"
-                  >
-                    Clear All Data
                   </button>
                 </div>
               </div>

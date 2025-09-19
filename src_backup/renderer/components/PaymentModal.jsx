@@ -16,7 +16,7 @@ const PaymentModal = ({ isOpen, onClose, onSuccess }) => {
 
   const fetchPlans = async () => {
     try {
-      const response = await fetch('http://127.0.0.1:5000/api/payment/plans');
+      const response = await fetch('http://localhost:5000/api/payment/plans');
       const data = await response.json();
       if (data.success) {
         setPlans(data.plans);
@@ -29,7 +29,7 @@ const PaymentModal = ({ isOpen, onClose, onSuccess }) => {
   const fetchDemoCredentials = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/payment/demo-credentials', {
+      const response = await fetch('http://localhost:5000/api/payment/demo-credentials', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();
@@ -47,7 +47,7 @@ const PaymentModal = ({ isOpen, onClose, onSuccess }) => {
     setLoading(true);
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/payment/initiate', {
+      const response = await fetch('http://localhost:5000/api/payment/initiate', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -75,7 +75,7 @@ const PaymentModal = ({ isOpen, onClose, onSuccess }) => {
   const simulatePaymentSuccess = async (orderId) => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/payment/verify', {
+      const response = await fetch('http://localhost:5000/api/payment/verify', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

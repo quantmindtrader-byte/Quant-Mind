@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
-import TradingViewWidget from './TradingViewWidget';
 
 const Dashboard = ({ appStatus }) => {
   const { state } = useApp();
@@ -21,7 +20,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTradingStats = async (period = 'daily', startDate = null, endDate = null) => {
     try {
       const token = localStorage.getItem('authToken');
-      let url = `http://127.0.0.1:5000/api/user/trading-statistics?period=${period}`;
+      let url = `http://localhost:5000/api/user/trading-statistics?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
       }
@@ -42,7 +41,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTodayStats = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/user/trading-statistics?period=daily', {
+      const response = await fetch('http://localhost:5000/api/user/trading-statistics?period=daily', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -58,7 +57,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTradeHistory = async (period = 'daily', startDate = null, endDate = null) => {
     try {
       const token = localStorage.getItem('authToken');
-      let url = `http://127.0.0.1:5000/api/user/trade-history?period=${period}`;
+      let url = `http://localhost:5000/api/user/trade-history?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
       }
@@ -82,7 +81,7 @@ const Dashboard = ({ appStatus }) => {
         const token = localStorage.getItem('authToken');
         
         // Load daily limits
-        const limitsResponse = await fetch('http://127.0.0.1:5000/api/user/trading-limits', {
+        const limitsResponse = await fetch('http://localhost:5000/api/user/trading-limits', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (limitsResponse.ok) {
@@ -144,8 +143,29 @@ const Dashboard = ({ appStatus }) => {
       <div className="p-6">
         {/* Header */}
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">Trading Dashboard</h1>
-          <p className="text-gray-400">Monitor your AI trading system performance</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-white mb-2">Trading Dashboard</h1>
+              <p className="text-gray-400">Monitor your AI trading system performance</p>
+            </div>
+            <div className="flex items-center space-x-2">
+              <div className={`w-3 h-3 rounded-full ${appStatus.backend ? 'bg-green-500' : 'bg-red-500'}`}></div>
+              <span className={`text-sm ${appStatus.backend ? 'text-green-400' : 'text-red-400'}`}>
+                {appStatus.backend ? 'Connected' : 'Disconnected'}
+              </span>
+            </div>
+          </div>
+          {!appStatus.backend && (
+            <div className="mt-4 p-4 bg-red-900/20 border border-red-700 rounded-lg">
+              <div className="flex items-center space-x-2">
+                <span className="text-red-400">⚠️</span>
+                <span className="text-red-300 font-medium">Backend Connection Failed</span>
+              </div>
+              <p className="text-red-200 text-sm mt-1">
+                Please ensure the backend server is running on port 5000. Check the console for more details.
+              </p>
+            </div>
+          )}
         </div>
 
 
@@ -526,33 +546,30 @@ const Dashboard = ({ appStatus }) => {
                 </div>
               </div>
 
-              {/* Live Market Chart */}
+              {/* Real-time Data */}
               <div className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white flex items-center">
-                    <span className="mr-2">📈</span>
-                    Live Market Chart
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-300">Symbol:</label>
-                    <select
-                      defaultValue="EURUSD"
-                      className="px-3 py-1 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD', 'EURGBP', 'EURJPY', 'GBPJPY', 'BTCUSD', 'ETHUSD', 'XAUUSD', 'XAGUSD', 'US30', 'SPX500', 'NAS100'].map((sym) => (
-                        <option key={sym} value={sym} className="bg-gray-700">
-                          {sym}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                  <span className="mr-2">📊</span>
+                  Real-time Updates
+                </h3>
+                <div className="space-y-3">
+                  {recentRealTimeData.length > 0 ? (
+                    recentRealTimeData.map((data, index) => (
+                      <div key={index} className="p-3 bg-gray-700 rounded-lg">
+                        <p className="text-sm text-gray-300">{data.message}</p>
+                        <p className="text-xs text-gray-500 mt-1">
+                          {new Date(data.timestamp).toLocaleTimeString()}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <div className="text-center py-8 text-gray-500">
+                      <div className="text-4xl mb-2">📡</div>
+                      <p>No real-time data available</p>
+                      <p className="text-xs mt-1">Start the trading bot to see live updates</p>
+                    </div>
+                  )}
                 </div>
-                <TradingViewWidget 
-                  symbol="EURUSD" 
-                  width="100%" 
-                  height="500px"
-                  onSymbolChange={(symbol) => console.log('Chart symbol changed to:', symbol)}
-                />
               </div>
             </div>
           </>

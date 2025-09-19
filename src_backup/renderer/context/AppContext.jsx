@@ -65,7 +65,7 @@ export function AppProvider({ children }) {
   const fetchLogs = async () => {
     try {
       dispatch({ type: 'SET_LOGS_FETCHING', payload: true });
-      const response = await fetch('http://127.0.0.1:5000/api/logs');
+      const response = await fetch('http://localhost:5000/api/logs');
       if (response.ok) {
         const data = await response.json();
         dispatch({ type: 'SET_LOGS', payload: data.logs || [] });
@@ -78,10 +78,6 @@ export function AppProvider({ children }) {
   };
 
   useEffect(() => {
-    // Clear previous session data on fresh startup
-    dispatch({ type: 'CLEAR_LOGS' });
-    dispatch({ type: 'SET_TRADING_STATUS', payload: 'stopped' });
-    
     // Load user from localStorage
     const savedUser = localStorage.getItem('user');
     if (savedUser) {
@@ -95,16 +91,6 @@ export function AppProvider({ children }) {
     const savedConfig = localStorage.getItem('tradingConfig');
     if (savedConfig) {
       dispatch({ type: 'SET_CONFIG', payload: JSON.parse(savedConfig) });
-    }
-
-    // Clear backend logs on startup
-    try {
-      fetch('http://127.0.0.1:5000/api/logs/clear', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' }
-      }).catch(() => {});
-    } catch (error) {
-      // Ignore errors on startup
     }
 
     // Fetch logs initially
@@ -213,7 +199,7 @@ export function AppProvider({ children }) {
   const fetchUserProfile = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/user/dashboard', {
+      const response = await fetch('http://localhost:5000/api/user/dashboard', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -251,19 +237,7 @@ export function AppProvider({ children }) {
     addNotification: (notification) => dispatch({ type: 'ADD_NOTIFICATION', payload: notification }),
     removeNotification: (id) => dispatch({ type: 'REMOVE_NOTIFICATION', payload: id }),
     setWsConnection: (connection) => dispatch({ type: 'SET_WS_CONNECTION', payload: connection }),
-    clearLogs: async () => {
-      // Clear frontend logs
-      dispatch({ type: 'CLEAR_LOGS' });
-      // Clear backend logs
-      try {
-        await fetch('http://127.0.0.1:5000/api/logs/clear', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' }
-        });
-      } catch (error) {
-        console.error('Failed to clear backend logs:', error);
-      }
-    },
+    clearLogs: () => dispatch({ type: 'CLEAR_LOGS' }),
     fetchLogs: fetchLogs,
     fetchUserProfile: fetchUserProfile
   };
