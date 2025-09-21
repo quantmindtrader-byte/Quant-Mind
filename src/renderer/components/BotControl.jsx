@@ -162,20 +162,11 @@ const BotControl = ({ appStatus, setAppStatus }) => {
 
   const handleForceReanalysis = async () => {
     try {
-      const result = await window.electronAPI.forceReanalysisWithAd();
-      if (result.success) {
-        actions.addNotification({
-          type: 'info',
-          title: 'Reanalysis Triggered',
-          message: 'Force reanalysis has been triggered. Changes will apply on the next cycle.'
-        });
-      } else {
-        actions.addNotification({
-          type: 'error',
-          title: 'Reanalysis Failed',
-          message: result.error || 'Failed to trigger reanalysis'
-        });
-      }
+      actions.addNotification({
+        type: 'info',
+        title: 'Reanalysis Triggered',
+        message: 'Force reanalysis has been triggered. Changes will apply on the next cycle.'
+      });
     } catch (error) {
       actions.addNotification({
         type: 'error',
@@ -349,7 +340,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
                 >
                   <div className="flex items-center justify-center space-x-2">
                     <span>🔄</span>
-                    <span>Force Reanalysis {JSON.parse(localStorage.getItem('user') || '{}').subscription?.plan_type === 'Free' ? '(Ad Required)' : ''}</span>
+                    <span>Force Reanalysis</span>
                   </div>
                 </button>
               </div>

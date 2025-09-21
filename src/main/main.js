@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog } = require('electron');
 const path = require('path');
-const adManager = require('./adManager');
+const { autoUpdater } = require('electron-updater');
 
 const { io } = require('socket.io-client');
 
@@ -9,15 +9,40 @@ class TradingAppManager {
     this.mainWindow = null;
     this.backendUrl = 'http://127.0.0.1:5000';
     this.socketUrl = 'http://127.0.0.1:5000';
+    this.updateRequired = false;
+    this.setupAutoUpdater();
+  }
+
+  setupAutoUpdater() {
+    autoUpdater.on('checking-for-update', () => {
+      console.log('Checking for update...');
+      this.sendToRenderer('update-checking');
+    });
     
-    // Handle SSL certificate errors for AdMob
-    app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
-      if (url.includes('googlesyndication.com') || url.includes('doubleclick.net')) {
-        event.preventDefault();
-        callback(true); // Trust the certificate
-      } else {
-        callback(false);
-      }
+    autoUpdater.on('update-available', (info) => {
+      console.log('Update available:', info);
+      this.updateRequired = true;
+      this.sendToRenderer('update-available', info);
+    });
+    
+    autoUpdater.on('update-not-available', (info) => {
+      console.log('Update not available:', info);
+      this.sendToRenderer('update-not-available', info);
+    });
+    
+    autoUpdater.on('error', (err) => {
+      console.error('Update error:', err);
+      this.sendToRenderer('update-error', { message: err.message });
+    });
+    
+    autoUpdater.on('download-progress', (progressObj) => {
+      console.log('Download progress:', progressObj);
+      this.sendToRenderer('update-download-progress', progressObj);
+    });
+    
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('Update downloaded:', info);
+      this.sendToRenderer('update-downloaded', info);
     });
   }
 
@@ -35,7 +60,7 @@ class TradingAppManager {
         webSecurity: false // Allow external resources
       },
       titleBarStyle: 'hiddenInset',
-      show: true
+      show: false
     });
 
     // Load the React app
@@ -217,13 +242,7 @@ class TradingAppManager {
           }
         }
         
-        // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'start-bot');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required to start bot. Please watch the ad or upgrade to Premium.' };
-          }
-        }
+
         
         // Get auth token from localStorage if available
         const botAuthToken = await this.mainWindow.webContents.executeJavaScript(
@@ -290,13 +309,7 @@ class TradingAppManager {
           }
         }
         
-        // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required for force reanalysis. Please watch the ad or upgrade to Premium.' };
-          }
-        }
+
         
         return { success: true, canProceed: true };
       } catch (error) {
@@ -318,54 +331,24 @@ class TradingAppManager {
       return result.filePaths[0] || null;
     });
 
-    // Add IPC handlers for ad-related actions
-    ipcMain.handle('save-config-with-ad-check', async (event, configData, action) => {
-      try {
-        // Get user plan from database
-        const authToken = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("authToken")'
-        ).catch(() => null);
-        
-        const userId = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("userId")'
-        ).catch(() => null);
-        
-        console.log('DEBUG: Auth token available:', !!authToken);
-        console.log('DEBUG: User ID from localStorage:', userId);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            console.log('DEBUG: API response status:', response.status);
-            if (response.ok) {
-              const plan = await response.json();
-              console.log('DEBUG: API response data:', plan);
-              userPlan = plan.plan_type || 'Free';
-              console.log('DEBUG: Final user plan:', userPlan);
-            } else {
-              console.log('DEBUG: API response not OK:', await response.text());
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        } else {
-          console.log('DEBUG: No auth token found');
-        }
-        
-        const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, action);
-        
-        if (!adWatched) {
-          return { success: false, error: 'Ad required to save configuration. Please watch the ad or upgrade to Premium.' };
-        }
-        
-        return { success: true, canProceed: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
+    // Auto-updater IPC handlers
+    ipcMain.handle('check-for-updates', () => {
+      autoUpdater.checkForUpdatesAndNotify();
     });
+
+    ipcMain.handle('download-update', () => {
+      autoUpdater.downloadUpdate();
+    });
+
+    ipcMain.handle('restart-and-update', () => {
+      autoUpdater.quitAndInstall();
+    });
+
+    ipcMain.handle('get-app-version', () => {
+      return app.getVersion();
+    });
+
+
   }
 
   createMenu() {
@@ -428,15 +411,7 @@ class TradingAppManager {
                 }
               }
               
-              // Skip ads for paid users
-              if (['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-                this.sendToRenderer('menu-action', 'force-reanalysis');
-              } else {
-                const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-                if (adWatched) {
-                  this.sendToRenderer('menu-action', 'force-reanalysis');
-                }
-              }
+              this.sendToRenderer('menu-action', 'force-reanalysis');
             }
           }
         ]
@@ -493,25 +468,59 @@ class TradingAppManager {
     this.setupSocketConnection();
     this.createMenu();
     
-    // Check backend connection on startup
+    // Start with update check - force update if available
+    this.checkForUpdatesOnStartup();
+  }
+
+  async checkForUpdatesOnStartup() {
+    try {
+      // Check version compatibility with backend first
+      const currentVersion = app.getVersion();
+      const versionCheck = await fetch(`${this.backendUrl}/api/app/version-check?version=${currentVersion}`);
+      
+      if (versionCheck.ok) {
+        const versionData = await versionCheck.json();
+        if (!versionData.is_supported) {
+          console.log('Version not supported, forcing update');
+          this.updateRequired = true;
+          this.sendToRenderer('update-required', versionData);
+        }
+      }
+      
+      // Check for updates
+      await autoUpdater.checkForUpdatesAndNotify();
+      
+      // Wait for update check to complete
+      setTimeout(async () => {
+        if (!this.updateRequired) {
+          // No update required, proceed normally
+          await this.startNormalApp();
+        }
+        // If update is required, the update screen will handle it
+      }, 3000);
+    } catch (error) {
+      console.error('Update check failed:', error);
+      // If update check fails, force update anyway for safety
+      this.updateRequired = true;
+      this.sendToRenderer('update-error', { message: 'Failed to verify app version. Update required.' });
+    }
+  }
+
+  async startNormalApp() {
+    // Check backend connection
     const connected = await this.checkBackendConnection();
     if (connected) {
       console.log('Successfully connected to remote backend');
-      // Clear previous session data
       await this.clearPreviousSession();
     } else {
       console.warn('Failed to connect to remote backend');
     }
     
-    // Force window to front
-    setTimeout(() => {
-      if (this.mainWindow) {
-        this.mainWindow.show();
-        this.mainWindow.focus();
-        this.mainWindow.setAlwaysOnTop(true);
-        this.mainWindow.setAlwaysOnTop(false);
-      }
-    }, 2000);
+    // Show main window
+    if (this.mainWindow) {
+      this.mainWindow.show();
+      this.mainWindow.focus();
+    }
   }
 }
 

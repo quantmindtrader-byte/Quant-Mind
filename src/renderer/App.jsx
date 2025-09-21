@@ -6,11 +6,13 @@ import Configuration from './components/Configuration';
 import RealTimeData from './components/RealTimeData';
 import Authentication from './components/Authentication';
 import NotificationDisplay from './components/NotificationDisplay';
+import AutoUpdater from './components/AutoUpdater';
 import { AppProvider } from './context/AppContext';
 
 function App() {
   const [currentView, setCurrentView] = useState('dashboard');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showUpdater, setShowUpdater] = useState(true);
   const [appStatus, setAppStatus] = useState({
     backend: false,
     agent: false,
@@ -134,6 +136,28 @@ function App() {
     setIsAuthenticated(false);
     setCurrentView('dashboard');
   };
+
+  const handleUpdateComplete = () => {
+    setShowUpdater(false);
+  };
+
+  const handleUpdateError = (error) => {
+    console.error('Update error:', error);
+    // For now, allow app to continue even if update fails
+    setTimeout(() => {
+      setShowUpdater(false);
+    }, 5000);
+  };
+
+  // Show updater first if needed
+  if (showUpdater) {
+    return (
+      <AutoUpdater 
+        onUpdateComplete={handleUpdateComplete}
+        onUpdateError={handleUpdateError}
+      />
+    );
+  }
 
   if (!isAuthenticated) {
     return (

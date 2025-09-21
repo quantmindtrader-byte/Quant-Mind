@@ -136,36 +136,16 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
             <button
               onClick={(e) => {
                 e.preventDefault();
-                const currentSymbols = (config.symbols || []).length;
-                const maxSymbols = dailyLimits?.max_symbols || 2;
-                
-                if (maxSymbols !== -1 && currentSymbols >= maxSymbols) {
-                  actions.addNotification({
-                    type: 'error',
-                    title: 'Symbol Limit Reached',
-                    message: `Your ${dailyLimits?.plan_type || 'Free'} plan allows maximum ${maxSymbols} symbols. Upgrade to add more.`
-                  });
-                  return;
-                }
-                
                 const newSymbols = [...(config.symbols || []), ''];
                 onConfigChange('symbols', newSymbols);
               }}
-              className={`btn-secondary text-sm ${
-                dailyLimits && dailyLimits.max_symbols !== -1 && 
-                (config.symbols || []).length >= dailyLimits.max_symbols
-                  ? 'opacity-50 cursor-not-allowed' : ''
-              }`}
-              disabled={dailyLimits && dailyLimits.max_symbols !== -1 && 
-                       (config.symbols || []).length >= dailyLimits.max_symbols}
+              className="btn-secondary text-sm"
             >
-  + Add Symbol {dailyLimits?.plan_type === 'Free' ? '(Ad Required)' : ''}
+  + Add Symbol
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1">
             Current symbols: {(config.symbols || []).length} configured
-            {dailyLimits && dailyLimits.max_symbols !== -1 && 
-             ` (${Math.max(0, dailyLimits.max_symbols - (config.symbols || []).length)} remaining)`}
           </p>
         </div>
         
@@ -238,24 +218,7 @@ const Configuration = () => {
     loadConfig();
   }, []);
 
-  const saveConfigToBackend = async (newConfig, showAd = true) => {
-    const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const userPlan = user.subscription?.plan_type || 'Free';
-    
-    if (showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-      setOriginalConfig(JSON.parse(JSON.stringify(config)));
-      const adResult = await window.electronAPI.saveConfigWithAdCheck(newConfig, 'save-config');
-      if (!adResult.success) {
-        if (originalConfig) {
-          setConfig(originalConfig);
-          actions.setConfig(originalConfig);
-          localStorage.setItem('tradingConfig', JSON.stringify(originalConfig));
-        }
-        throw new Error('Ad required to save changes');
-      }
-      // Ad was watched successfully, continue to save
-    }
-    
+  const saveConfigToBackend = async (newConfig) => {
     const token = localStorage.getItem('authToken');
     const response = await fetch('http://127.0.0.1:5000/api/settings', {
       method: 'POST',
@@ -279,6 +242,46 @@ const Configuration = () => {
     setConfig(newConfig);
     actions.setConfig(newConfig);
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    
+    // If it's a money management field, also update the tracking tables immediately
+    const moneyMgmtFields = ['daily_profit_target', 'daily_loss_limit', 'daily_trade_limit', 
+                            'daily_trade_loss_limit', 'max_risk_per_trade', 'weekly_profit_target', 'weekly_loss_limit'];
+    
+    if (moneyMgmtFields.includes(key)) {
+      // Debounce the update to avoid too many API calls
+      clearTimeout(window.moneyMgmtUpdateTimeout);
+      window.moneyMgmtUpdateTimeout = setTimeout(async () => {
+        try {
+          const token = localStorage.getItem('authToken');
+          const response = await fetch('http://127.0.0.1:5000/api/user/update-money-management', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              [key]: value,
+              // Include other money management values to ensure consistency
+              daily_profit_target: newConfig.daily_profit_target,
+              daily_loss_limit: newConfig.daily_loss_limit,
+              daily_trade_limit: newConfig.daily_trade_limit,
+              daily_trade_loss_limit: newConfig.daily_trade_loss_limit,
+              max_risk_per_trade: newConfig.max_risk_per_trade,
+              weekly_profit_target: newConfig.weekly_profit_target,
+              weekly_loss_limit: newConfig.weekly_loss_limit
+            })
+          });
+          
+          if (response.ok) {
+            console.log('Money management tracking tables updated successfully');
+          } else {
+            console.error('Failed to update money management tracking tables');
+          }
+        } catch (error) {
+          console.error('Error updating money management tracking:', error);
+        }
+      }, 1000); // 1 second debounce
+    }
   };
 
   const handleAddMT5Config = () => {
@@ -656,7 +659,42 @@ const Configuration = () => {
               <button
                 onClick={async () => {
                   try {
-                    await saveConfigToBackend(config, true);
+                    await saveConfigToBackend(config);
+                    
+                    // Force update money management tracking tables after successful save
+                    const moneyMgmtFields = ['daily_profit_target', 'daily_loss_limit', 'daily_trade_limit', 
+                                            'daily_trade_loss_limit', 'max_risk_per_trade', 'weekly_profit_target', 'weekly_loss_limit'];
+                    
+                    const hasMoneyMgmtChanges = moneyMgmtFields.some(field => config[field] !== undefined);
+                    
+                    if (hasMoneyMgmtChanges) {
+                      try {
+                        const token = localStorage.getItem('authToken');
+                        const mmResponse = await fetch('http://127.0.0.1:5000/api/user/update-money-management', {
+                          method: 'POST',
+                          headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${token}`
+                          },
+                          body: JSON.stringify({
+                            daily_profit_target: config.daily_profit_target,
+                            daily_loss_limit: config.daily_loss_limit,
+                            daily_trade_limit: config.daily_trade_limit,
+                            daily_trade_loss_limit: config.daily_trade_loss_limit,
+                            max_risk_per_trade: config.max_risk_per_trade,
+                            weekly_profit_target: config.weekly_profit_target,
+                            weekly_loss_limit: config.weekly_loss_limit
+                          })
+                        });
+                        
+                        if (mmResponse.ok) {
+                          console.log('Money management tracking tables synced successfully');
+                        }
+                      } catch (mmError) {
+                        console.error('Error syncing money management tracking:', mmError);
+                      }
+                    }
+                    
                     actions.addNotification({
                       type: 'success',
                       title: 'Configuration Saved',
@@ -666,13 +704,13 @@ const Configuration = () => {
                     actions.addNotification({
                       type: 'error',
                       title: 'Save Failed',
-                      message: error.message === 'Ad required to save changes' ? 'Configuration reset - ad required to save changes' : 'Failed to save configuration to database. Please try again.'
+                      message: 'Failed to save configuration to database. Please try again.'
                     });
                   }
                 }}
                 className="btn-primary"
               >
-Save Configuration {JSON.parse(localStorage.getItem('user') || '{}').subscription?.plan_type === 'Free' ? '(Ad Required)' : ''}
+Save Configuration
               </button>
             </div>
           </div>
