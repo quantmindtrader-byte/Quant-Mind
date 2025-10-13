@@ -95,7 +95,7 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
     const fetchLimits = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/user/trading-limits', {
+        const response = await fetch('http://74.162.152.95/api/user/trading-limits', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -136,16 +136,36 @@ const SymbolManagementTab = React.memo(({ config, onConfigChange, actions }) => 
             <button
               onClick={(e) => {
                 e.preventDefault();
+                const currentSymbols = (config.symbols || []).length;
+                const maxSymbols = dailyLimits?.max_symbols || 2;
+                
+                if (maxSymbols !== -1 && currentSymbols >= maxSymbols) {
+                  actions.addNotification({
+                    type: 'error',
+                    title: 'Symbol Limit Reached',
+                    message: `Your ${dailyLimits?.plan_type || 'Free'} plan allows maximum ${maxSymbols} symbols. Upgrade to add more.`
+                  });
+                  return;
+                }
+                
                 const newSymbols = [...(config.symbols || []), ''];
                 onConfigChange('symbols', newSymbols);
               }}
-              className="btn-secondary text-sm"
+              className={`btn-secondary text-sm ${
+                dailyLimits && dailyLimits.max_symbols !== -1 && 
+                (config.symbols || []).length >= dailyLimits.max_symbols
+                  ? 'opacity-50 cursor-not-allowed' : ''
+              }`}
+              disabled={dailyLimits && dailyLimits.max_symbols !== -1 && 
+                       (config.symbols || []).length >= dailyLimits.max_symbols}
             >
-  + Add Symbol
+  + Add Symbol {dailyLimits?.plan_type === 'Free' ? '(Ad Required)' : ''}
             </button>
           </div>
           <p className="text-xs text-gray-500 mt-1">
             Current symbols: {(config.symbols || []).length} configured
+            {dailyLimits && dailyLimits.max_symbols !== -1 && 
+             ` (${Math.max(0, dailyLimits.max_symbols - (config.symbols || []).length)} remaining)`}
           </p>
         </div>
         
@@ -196,12 +216,14 @@ const Configuration = () => {
     password: '',
     server: ''
   });
+  const [editingConfig, setEditingConfig] = useState(null);
+  const [editMT5Config, setEditMT5Config] = useState(null);
 
   useEffect(() => {
     const loadConfig = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/settings', {
+        const response = await fetch('http://74.162.152.95/api/settings', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (response.ok) {
@@ -218,19 +240,55 @@ const Configuration = () => {
     loadConfig();
   }, []);
 
-  const saveConfigToBackend = async (newConfig) => {
-    const token = localStorage.getItem('authToken');
-    const response = await fetch('http://127.0.0.1:5000/api/settings', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`
-      },
-      body: JSON.stringify(newConfig)
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to save to database');
+  const showNotification = (type, title, message) => {
+    actions.addNotification({ type, title, message });
+  };
+
+  const saveConfigToBackend = async (newConfig, showAd = true) => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || '{}');
+      const userPlan = user.subscription?.plan_type || 'Free';
+      
+      if (showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan)) {
+        setOriginalConfig(JSON.parse(JSON.stringify(config)));
+        const adResult = await window.electronAPI.saveConfigWithAdCheck(newConfig, 'save-config');
+        if (!adResult.success) {
+          if (originalConfig) {
+            setConfig(originalConfig);
+            actions.setConfig(originalConfig);
+            localStorage.setItem('tradingConfig', JSON.stringify(originalConfig));
+          }
+          showNotification('error', 'Save Cancelled', 'Configuration reset - ad required to save changes');
+          return;
+        }
+      }
+      
+      const token = localStorage.getItem('authToken');
+      // Ensure we always send complete config including all MT5 configs
+      const mergedConfig = {
+        ...newConfig,
+        mt5_configs: newConfig.mt5_configs || config.mt5_configs || {}
+      };
+      
+      const response = await fetch('http://74.162.152.95/api/settings', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify(mergedConfig)
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      
+      showNotification('success', 'Configuration Saved', 
+        showAd && !['Starter', 'Pro', 'Elite'].includes(userPlan) 
+          ? 'Thank you for watching the ad! Configuration saved successfully.' 
+          : 'Configuration saved successfully.');
+    } catch (error) {
+      showNotification('error', 'Save Failed', `Failed to save configuration: ${error.message}`);
     }
   };
 
@@ -242,55 +300,11 @@ const Configuration = () => {
     setConfig(newConfig);
     actions.setConfig(newConfig);
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
-    
-    // If it's a money management field, also update the tracking tables immediately
-    const moneyMgmtFields = ['daily_profit_target', 'daily_loss_limit', 'daily_trade_limit', 
-                            'daily_trade_loss_limit', 'max_risk_per_trade', 'weekly_profit_target', 'weekly_loss_limit'];
-    
-    if (moneyMgmtFields.includes(key)) {
-      // Debounce the update to avoid too many API calls
-      clearTimeout(window.moneyMgmtUpdateTimeout);
-      window.moneyMgmtUpdateTimeout = setTimeout(async () => {
-        try {
-          const token = localStorage.getItem('authToken');
-          const response = await fetch('http://127.0.0.1:5000/api/user/update-money-management', {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${token}`
-            },
-            body: JSON.stringify({
-              [key]: value,
-              // Include other money management values to ensure consistency
-              daily_profit_target: newConfig.daily_profit_target,
-              daily_loss_limit: newConfig.daily_loss_limit,
-              daily_trade_limit: newConfig.daily_trade_limit,
-              daily_trade_loss_limit: newConfig.daily_trade_loss_limit,
-              max_risk_per_trade: newConfig.max_risk_per_trade,
-              weekly_profit_target: newConfig.weekly_profit_target,
-              weekly_loss_limit: newConfig.weekly_loss_limit
-            })
-          });
-          
-          if (response.ok) {
-            console.log('Money management tracking tables updated successfully');
-          } else {
-            console.error('Failed to update money management tracking tables');
-          }
-        } catch (error) {
-          console.error('Error updating money management tracking:', error);
-        }
-      }, 1000); // 1 second debounce
-    }
   };
 
   const handleAddMT5Config = () => {
     if (!newMT5Config.name || !newMT5Config.path || !newMT5Config.login) {
-      actions.addNotification({
-        type: 'error',
-        title: 'Validation Error',
-        message: 'Please fill in all required MT5 configuration fields.'
-      });
+      showNotification('error', 'Validation Error', 'Please fill in all required MT5 configuration fields.');
       return;
     }
 
@@ -312,11 +326,57 @@ const Configuration = () => {
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
     setNewMT5Config({ name: '', path: '', login: '', password: '', server: '' });
     
-    actions.addNotification({
-      type: 'info',
-      title: 'Configuration Added',
-      message: `MT5 configuration "${newMT5Config.name}" added. Click Save to persist changes.`
+    showNotification('success', 'MT5 Config Added', `MT5 configuration "${newMT5Config.name}" added. Click Save to persist changes.`);
+  };
+
+  const handleEditMT5Config = (configName) => {
+    const cfg = config.mt5_configs[configName];
+    setEditingConfig(configName);
+    setEditMT5Config({
+      name: configName,
+      path: cfg.path,
+      login: cfg.login.toString(),
+      password: cfg.password,
+      server: cfg.server
     });
+  };
+
+  const handleSaveEditMT5Config = async () => {
+    if (!editMT5Config.name || !editMT5Config.path || !editMT5Config.login) {
+      showNotification('error', 'Validation Error', 'Please fill in all required MT5 configuration fields.');
+      return;
+    }
+
+    const newMT5Configs = { ...config.mt5_configs };
+    
+    // Remove old config if name changed
+    if (editingConfig !== editMT5Config.name) {
+      delete newMT5Configs[editingConfig];
+    }
+    
+    // Add/update config
+    newMT5Configs[editMT5Config.name] = {
+      path: editMT5Config.path,
+      login: parseInt(editMT5Config.login),
+      password: editMT5Config.password,
+      server: editMT5Config.server
+    };
+
+    const newConfig = { ...config, mt5_configs: newMT5Configs };
+    setConfig(newConfig);
+    actions.setConfig(newConfig);
+    localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
+    
+    try {
+      const token = localStorage.getItem('authToken');
+      await saveConfigToBackend(newConfig, false);
+      
+      showNotification('success', 'MT5 Config Updated', `MT5 configuration "${editMT5Config.name}" has been updated and saved.`);
+      setEditingConfig(null);
+      setEditMT5Config(null);
+    } catch (error) {
+      showNotification('error', 'Update Failed', `Failed to save update: ${error.message}`);
+    }
   };
 
   const handleRemoveMT5Config = async (configName) => {
@@ -330,10 +390,9 @@ const Configuration = () => {
     actions.setConfig(newConfig);
     localStorage.setItem('tradingConfig', JSON.stringify(newConfig));
     
-    // Direct API call to save without merging
     try {
       const token = localStorage.getItem('authToken');
-      await fetch('http://127.0.0.1:5000/api/settings', {
+      const response = await fetch('http://74.162.152.95/api/settings', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -342,17 +401,13 @@ const Configuration = () => {
         body: JSON.stringify(newConfig)
       });
       
-      actions.addNotification({
-        type: 'success',
-        title: 'Configuration Removed',
-        message: `MT5 configuration "${configName}" has been removed and saved.`
-      });
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}`);
+      }
+      
+      showNotification('success', 'MT5 Config Removed', `MT5 configuration "${configName}" has been removed and saved.`);
     } catch (error) {
-      actions.addNotification({
-        type: 'error',
-        title: 'Save Error',
-        message: `Failed to save removal: ${error.message}`
-      });
+      showNotification('error', 'Remove Failed', `Failed to save removal: ${error.message}`);
     }
   };
 
@@ -363,25 +418,13 @@ const Configuration = () => {
         const fileName = filePath.split('\\').pop().toLowerCase();
         if (fileName.includes('terminal') && fileName.endsWith('.exe')) {
           setNewMT5Config(prev => ({ ...prev, path: filePath }));
-          actions.addNotification({
-            type: 'success',
-            title: 'File Selected',
-            message: `Selected: ${fileName}`
-          });
+          showNotification('success', 'File Selected', `Selected: ${fileName}`);
         } else {
-          actions.addNotification({
-            type: 'warning',
-            title: 'Invalid File',
-            message: 'Please select a valid MT5 terminal executable (terminal64.exe or terminal.exe)'
-          });
+          showNotification('error', 'Invalid File', 'Please select a valid MT5 terminal executable (terminal64.exe or terminal.exe)');
         }
       }
     } catch (error) {
-      actions.addNotification({
-        type: 'error',
-        title: 'File Browser Error',
-        message: 'Failed to open file browser. Please enter the path manually.'
-      });
+      showNotification('error', 'File Browser Error', 'Failed to open file browser. Please enter the path manually.');
     }
   };
 
@@ -431,12 +474,20 @@ const Configuration = () => {
                           <p className="text-sm text-gray-400">Login: {cfg.login} | Server: {cfg.server}</p>
                           <p className="text-xs text-gray-500 truncate">Path: {cfg.path}</p>
                         </div>
-                        <button
-                          onClick={() => handleRemoveMT5Config(name)}
-                          className="ml-4 px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
-                        >
-                          Remove
-                        </button>
+                        <div className="flex space-x-2">
+                          <button
+                            onClick={() => handleEditMT5Config(name)}
+                            className="px-3 py-1 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded transition-colors"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleRemoveMT5Config(name)}
+                            className="px-3 py-1 bg-red-600 hover:bg-red-700 text-white text-sm rounded transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -621,6 +672,96 @@ const Configuration = () => {
           )}
         </div>
 
+        {editingConfig && editMT5Config && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-gray-800 rounded-lg p-6 max-w-2xl w-full mx-4">
+              <h3 className="text-xl font-semibold text-white mb-4">Edit MT5 Configuration</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Configuration Name</label>
+                  <input
+                    type="text"
+                    value={editMT5Config.name}
+                    onChange={(e) => setEditMT5Config(prev => ({ ...prev, name: e.target.value }))}
+                    className="input-field w-full"
+                    placeholder="e.g., Live Account, Demo Account"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">MT5 Terminal Path</label>
+                  <div className="flex space-x-2">
+                    <input
+                      type="text"
+                      value={editMT5Config.path}
+                      onChange={(e) => setEditMT5Config(prev => ({ ...prev, path: e.target.value }))}
+                      className="input-field flex-1"
+                      placeholder="Path to terminal64.exe"
+                    />
+                    <button
+                      onClick={async () => {
+                        const filePath = await window.electronAPI.openFileDialog();
+                        if (filePath) {
+                          setEditMT5Config(prev => ({ ...prev, path: filePath }));
+                        }
+                      }}
+                      className="btn-secondary px-3"
+                    >
+                      Browse
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Login</label>
+                  <input
+                    type="number"
+                    value={editMT5Config.login}
+                    onChange={(e) => setEditMT5Config(prev => ({ ...prev, login: e.target.value }))}
+                    className="input-field w-full"
+                    placeholder="MT5 Account Number"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                  <input
+                    type="password"
+                    value={editMT5Config.password}
+                    onChange={(e) => setEditMT5Config(prev => ({ ...prev, password: e.target.value }))}
+                    className="input-field w-full"
+                    placeholder="Account Password"
+                  />
+                </div>
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-gray-300 mb-2">Server</label>
+                  <input
+                    type="text"
+                    value={editMT5Config.server}
+                    onChange={(e) => setEditMT5Config(prev => ({ ...prev, server: e.target.value }))}
+                    className="input-field w-full"
+                    placeholder="e.g., MetaQuotes-Demo, Broker-Live"
+                  />
+                </div>
+              </div>
+              <div className="mt-6 flex justify-end space-x-3">
+                <button
+                  onClick={() => {
+                    setEditingConfig(null);
+                    setEditMT5Config(null);
+                  }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleSaveEditMT5Config}
+                  className="btn-primary"
+                >
+                  Save Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         <div className="mt-8 pt-6 border-t border-gray-700">
           <div className="flex justify-between items-center">
             <p className="text-sm text-gray-400">
@@ -646,11 +787,7 @@ const Configuration = () => {
                     weekly_profit_target: 15.0,
                     weekly_loss_limit: 10.0
                   });
-                  actions.addNotification({
-                    type: 'info',
-                    title: 'Configuration Reset',
-                    message: 'All settings have been reset to defaults.'
-                  });
+                  showNotification('success', 'Configuration Reset', 'All settings have been reset to defaults.');
                 }}
                 className="btn-secondary"
               >
@@ -658,59 +795,11 @@ const Configuration = () => {
               </button>
               <button
                 onClick={async () => {
-                  try {
-                    await saveConfigToBackend(config);
-                    
-                    // Force update money management tracking tables after successful save
-                    const moneyMgmtFields = ['daily_profit_target', 'daily_loss_limit', 'daily_trade_limit', 
-                                            'daily_trade_loss_limit', 'max_risk_per_trade', 'weekly_profit_target', 'weekly_loss_limit'];
-                    
-                    const hasMoneyMgmtChanges = moneyMgmtFields.some(field => config[field] !== undefined);
-                    
-                    if (hasMoneyMgmtChanges) {
-                      try {
-                        const token = localStorage.getItem('authToken');
-                        const mmResponse = await fetch('http://127.0.0.1:5000/api/user/update-money-management', {
-                          method: 'POST',
-                          headers: {
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${token}`
-                          },
-                          body: JSON.stringify({
-                            daily_profit_target: config.daily_profit_target,
-                            daily_loss_limit: config.daily_loss_limit,
-                            daily_trade_limit: config.daily_trade_limit,
-                            daily_trade_loss_limit: config.daily_trade_loss_limit,
-                            max_risk_per_trade: config.max_risk_per_trade,
-                            weekly_profit_target: config.weekly_profit_target,
-                            weekly_loss_limit: config.weekly_loss_limit
-                          })
-                        });
-                        
-                        if (mmResponse.ok) {
-                          console.log('Money management tracking tables synced successfully');
-                        }
-                      } catch (mmError) {
-                        console.error('Error syncing money management tracking:', mmError);
-                      }
-                    }
-                    
-                    actions.addNotification({
-                      type: 'success',
-                      title: 'Configuration Saved',
-                      message: 'Your trading configuration has been successfully saved to the database.'
-                    });
-                  } catch (error) {
-                    actions.addNotification({
-                      type: 'error',
-                      title: 'Save Failed',
-                      message: 'Failed to save configuration to database. Please try again.'
-                    });
-                  }
+                  await saveConfigToBackend(config, true);
                 }}
                 className="btn-primary"
               >
-Save Configuration
+Save Configuration {JSON.parse(localStorage.getItem('user') || '{}').subscription?.plan_type === 'Free' ? '(Ad Required)' : ''}
               </button>
             </div>
           </div>

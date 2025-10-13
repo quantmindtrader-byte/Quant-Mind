@@ -13,7 +13,7 @@ const SubscriptionStatus = ({ user }) => {
   const fetchUsage = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/saas/usage', {
+      const response = await fetch('http://74.162.152.95/api/saas/usage', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       const data = await response.json();

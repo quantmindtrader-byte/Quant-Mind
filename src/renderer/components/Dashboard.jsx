@@ -1,6 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useApp } from '../context/AppContext';
-import TradingViewWidget from './TradingViewWidget';
 
 const Dashboard = ({ appStatus }) => {
   const { state } = useApp();
@@ -17,11 +16,17 @@ const Dashboard = ({ appStatus }) => {
   const [selectedPeriod, setSelectedPeriod] = useState('daily');
   const [customDates, setCustomDates] = useState({ start: '', end: '' });
   const [activeTab, setActiveTab] = useState('overview');
+  const chartInitialized = useRef(false);
 
   const fetchTradingStats = async (period = 'daily', startDate = null, endDate = null) => {
     try {
       const token = localStorage.getItem('authToken');
-      let url = `http://127.0.0.1:5000/api/user/trading-statistics?period=${period}`;
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      
+      if (!user || !user.id) return;
+      
+      let url = `http://74.162.152.95/api/bot/trade-statistics/${user.id}?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
       }
@@ -32,7 +37,9 @@ const Dashboard = ({ appStatus }) => {
       
       if (response.ok) {
         const data = await response.json();
-        setTradingStats(data);
+        if (data.success) {
+          setTradingStats(data.statistics);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch trading stats:', error);
@@ -42,7 +49,7 @@ const Dashboard = ({ appStatus }) => {
   const fetchTodayStats = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/user/trading-statistics?period=daily', {
+      const response = await fetch('http://74.162.152.95/api/user/trading-statistics?period=daily', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -55,10 +62,15 @@ const Dashboard = ({ appStatus }) => {
     }
   };
 
-  const fetchTradeHistory = async (period = 'daily', startDate = null, endDate = null) => {
+  const fetchTradeHistory = async (period = 'all', startDate = null, endDate = null) => {
     try {
       const token = localStorage.getItem('authToken');
-      let url = `http://127.0.0.1:5000/api/user/trade-history?period=${period}`;
+      const userStr = localStorage.getItem('user');
+      const user = userStr ? JSON.parse(userStr) : null;
+      
+      if (!user || !user.id) return;
+      
+      let url = `http://74.162.152.95/api/bot/trade-statistics/${user.id}?period=${period}`;
       if (period === 'custom' && startDate && endDate) {
         url += `&start_date=${startDate}&end_date=${endDate}`;
       }
@@ -69,7 +81,9 @@ const Dashboard = ({ appStatus }) => {
       
       if (response.ok) {
         const data = await response.json();
-        setTradeHistory(data.trades);
+        if (data.success) {
+          setTradeHistory(data.recent_trades || []);
+        }
       }
     } catch (error) {
       console.error('Failed to fetch trade history:', error);
@@ -82,7 +96,7 @@ const Dashboard = ({ appStatus }) => {
         const token = localStorage.getItem('authToken');
         
         // Load daily limits
-        const limitsResponse = await fetch('http://127.0.0.1:5000/api/user/trading-limits', {
+        const limitsResponse = await fetch('http://74.162.152.95/api/user/trading-limits', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         if (limitsResponse.ok) {
@@ -107,6 +121,38 @@ const Dashboard = ({ appStatus }) => {
     
     return () => clearInterval(interval);
   }, [selectedPeriod]);
+
+  useEffect(() => {
+    if (activeTab === 'overview' && !chartInitialized.current) {
+      const script = document.createElement('script');
+      script.src = 'https://s3.tradingview.com/tv.js';
+      script.async = true;
+      script.onload = () => {
+        if (window.TradingView) {
+          new window.TradingView.widget({
+            autosize: true,
+            symbol: 'FX:EURUSD',
+            interval: '15',
+            timezone: 'Etc/UTC',
+            theme: 'dark',
+            style: '1',
+            locale: 'en',
+            toolbar_bg: '#131722',
+            enable_publishing: false,
+            allow_symbol_change: true,
+            container_id: 'tradingview_chart'
+          });
+          chartInitialized.current = true;
+        }
+      };
+      document.head.appendChild(script);
+      return () => {
+        if (script.parentNode) {
+          script.parentNode.removeChild(script);
+        }
+      };
+    }
+  }, [activeTab]);
 
   const handlePeriodChange = (period) => {
     setSelectedPeriod(period);
@@ -137,7 +183,6 @@ const Dashboard = ({ appStatus }) => {
   const systemHealth = getSystemHealth();
 
   const recentActivity = state.logs.slice(-5).reverse();
-  const recentRealTimeData = state.realTimeData.slice(-3).reverse();
 
   return (
     <div className="h-full overflow-auto bg-gray-900">
@@ -314,21 +359,19 @@ const Dashboard = ({ appStatus }) => {
                   </div>
                   <div className="card">
                     <div className="text-center">
-                      <p className="text-gray-400 text-sm">Total P&L</p>
+                      <p className="text-gray-400 text-sm">Net Profit</p>
                       <p className={`text-3xl font-bold ${
-                        tradingStats.total_pnl >= 0 ? 'text-green-400' : 'text-red-400'
+                        (tradingStats.net_profit || 0) >= 0 ? 'text-green-400' : 'text-red-400'
                       }`}>
-                        ${tradingStats.total_pnl.toFixed(2)}
+                        ${(tradingStats.net_profit || 0).toFixed(2)}
                       </p>
                     </div>
                   </div>
                   <div className="card">
                     <div className="text-center">
-                      <p className="text-gray-400 text-sm">Avg Per Trade</p>
-                      <p className={`text-3xl font-bold ${
-                        tradingStats.avg_pnl_per_trade >= 0 ? 'text-green-400' : 'text-red-400'
-                      }`}>
-                        ${tradingStats.avg_pnl_per_trade.toFixed(2)}
+                      <p className="text-gray-400 text-sm">Profit Factor</p>
+                      <p className="text-3xl font-bold text-blue-400">
+                        {(tradingStats.profit_factor || 0).toFixed(2)}
                       </p>
                     </div>
                   </div>
@@ -355,35 +398,48 @@ const Dashboard = ({ appStatus }) => {
                         <span className="text-red-400">-${tradingStats.total_loss.toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-400">Best Trade:</span>
-                        <span className="text-green-400">${tradingStats.best_trade.toFixed(2)}</span>
+                        <span className="text-gray-400">Average Win:</span>
+                        <span className="text-green-400">${(tradingStats.average_win || 0).toFixed(2)}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className="text-gray-400">Worst Trade:</span>
-                        <span className="text-red-400">${tradingStats.worst_trade.toFixed(2)}</span>
+                        <span className="text-gray-400">Average Loss:</span>
+                        <span className="text-red-400">${(tradingStats.average_loss || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Largest Win:</span>
+                        <span className="text-green-400">${(tradingStats.largest_win || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Largest Loss:</span>
+                        <span className="text-red-400">${(tradingStats.largest_loss || 0).toFixed(2)}</span>
                       </div>
                     </div>
                   </div>
 
                   <div className="card">
-                    <h3 className="text-lg font-semibold text-white mb-4">Symbol Performance</h3>
+                    <h3 className="text-lg font-semibold text-white mb-4">MT5 History Stats</h3>
                     <div className="space-y-3">
-                      {tradingStats.symbol_breakdown.map((symbol, index) => (
-                        <div key={index} className="flex justify-between items-center">
-                          <div>
-                            <span className="text-white font-medium">{symbol.symbol}</span>
-                            <span className="text-gray-400 text-sm ml-2">({symbol.trades} trades)</span>
-                          </div>
-                          <div className="text-right">
-                            <div className={`font-medium ${
-                              symbol.pnl >= 0 ? 'text-green-400' : 'text-red-400'
-                            }`}>
-                              ${symbol.pnl.toFixed(2)}
-                            </div>
-                            <div className="text-gray-400 text-sm">{symbol.win_rate}% win</div>
-                          </div>
-                        </div>
-                      ))}
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Profit Factor:</span>
+                        <span className="text-blue-400 font-semibold">{(tradingStats.profit_factor || 0).toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Win Rate:</span>
+                        <span className="text-green-400 font-semibold">{(tradingStats.win_rate || 0).toFixed(2)}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="text-gray-400">Net Profit:</span>
+                        <span className={`font-semibold ${
+                          (tradingStats.net_profit || 0) >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          ${(tradingStats.net_profit || 0).toFixed(2)}
+                        </span>
+                      </div>
+                      <div className="mt-4 pt-4 border-t border-gray-700">
+                        <p className="text-sm text-gray-500 text-center">
+                          Data synced from MT5 terminal
+                        </p>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -496,12 +552,12 @@ const Dashboard = ({ appStatus }) => {
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
               {/* Recent Activity */}
-              <div className="card">
+              <div className="card h-[600px] flex flex-col">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
                   <span className="mr-2">📋</span>
                   Recent Activity
                 </h3>
-                <div className="space-y-3">
+                <div className="space-y-3 overflow-y-auto flex-1">
                   {recentActivity.length > 0 ? (
                     recentActivity.map((log, index) => (
                       <div key={index} className="flex items-start space-x-3 p-3 bg-gray-700 rounded-lg">
@@ -526,33 +582,17 @@ const Dashboard = ({ appStatus }) => {
                 </div>
               </div>
 
-              {/* Live Market Chart */}
-              <div className="card">
-                <div className="flex items-center justify-between mb-4">
-                  <h3 className="text-lg font-semibold text-white flex items-center">
-                    <span className="mr-2">📈</span>
-                    Live Market Chart
-                  </h3>
-                  <div className="flex items-center gap-2">
-                    <label className="text-sm text-gray-300">Symbol:</label>
-                    <select
-                      defaultValue="EURUSD"
-                      className="px-3 py-1 bg-gray-700 border border-gray-600 rounded-md text-sm text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    >
-                      {['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF', 'NZDUSD', 'EURGBP', 'EURJPY', 'GBPJPY', 'BTCUSD', 'ETHUSD', 'XAUUSD', 'XAGUSD', 'US30', 'SPX500', 'NAS100'].map((sym) => (
-                        <option key={sym} value={sym} className="bg-gray-700">
-                          {sym}
-                        </option>
-                      ))}
-                    </select>
+              {/* TradingView Chart */}
+              <div className="card h-[600px] flex flex-col">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
+                  <span className="mr-2">📈</span>
+                  Live Market Chart
+                </h3>
+                <div className="flex-1 bg-[#131722] rounded-lg overflow-hidden">
+                  <div className="tradingview-widget-container" style={{ height: '100%', width: '100%' }}>
+                    <div id="tradingview_chart" style={{ height: '100%', width: '100%' }}></div>
                   </div>
                 </div>
-                <TradingViewWidget 
-                  symbol="EURUSD" 
-                  width="100%" 
-                  height="500px"
-                  onSymbolChange={(symbol) => console.log('Chart symbol changed to:', symbol)}
-                />
               </div>
             </div>
           </>
@@ -597,36 +637,7 @@ const Dashboard = ({ appStatus }) => {
           </>
         )}
 
-        {/* Notifications */}
-        {activeTab === 'overview' && state.notifications.length > 0 && (
-          <div className="mt-8">
-            <div className="card">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
-                <span className="mr-2">🔔</span>
-                Notifications ({state.notifications.length})
-              </h3>
-              <div className="space-y-2">
-                {state.notifications.slice(-3).map((notification) => (
-                  <div key={notification.id} className={`p-3 rounded-lg border-l-4 ${
-                    notification.type === 'error' ? 'bg-red-900/20 border-red-500' :
-                    notification.type === 'warning' ? 'bg-yellow-900/20 border-yellow-500' :
-                    'bg-blue-900/20 border-blue-500'
-                  }`}>
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <p className="font-medium text-white">{notification.title}</p>
-                        <p className="text-sm text-gray-300">{notification.message}</p>
-                      </div>
-                      <span className="text-xs text-gray-500">
-                        {new Date(notification.timestamp).toLocaleTimeString()}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
+
       </div>
     </div>
   );

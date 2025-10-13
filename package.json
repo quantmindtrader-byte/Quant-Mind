@@ -1,84 +1,66 @@
 {
   "name": "quantmind-desktop",
-  "version": "1.1.2",
-  "description": "QuantMind Trading Desktop Application",
+  "version": "1.2.3",
+  "description": "QuantMind Desktop Trading Application",
   "author": "QuantMind",
   "main": "src/main/main.js",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/quantmindtrader-byte/Quant-Mind.git"
-  },
   "scripts": {
-    "start": "electron src/main/main.js",
-    "dev": "concurrently \"npm run dev:renderer\" \"npm run dev:main\"",
-    "dev:renderer": "vite",
-    "dev:main": "electron src/main/main.js",
-    "build": "npm run build:renderer && electron-builder",
-    "dist": "npm run build:renderer && electron-builder",
-    "publish": "npm run build:renderer && electron-builder --publish=always",
-    "release": "npm run build:renderer && electron-builder --publish=always",
+    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "wait-on http://127.0.0.1:5173 && electron src/main/main.js",
+    "dev:bridge": "python src/bridge/mt5_bridge.py 8080",
+    "dev:nginx": "node scripts/start-nginx.js",
     "build:renderer": "vite build",
-    "postinstall": "electron-builder install-app-deps"
-  },
-  "dependencies": {
-    "axios": "^1.6.0",
-    "cors": "^2.8.5",
-    "electron-updater": "^6.1.7",
-    "express": "^4.21.2",
-    "socket.io-client": "^4.8.1"
+    "build": "npm run build:renderer && electron-builder",
+    "start": "electron src/main/main.js",
+    "start:dev": "electron src/main/main.js"
   },
   "devDependencies": {
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@vitejs/plugin-react": "^4.2.0",
-    "autoprefixer": "^10.4.0",
-    "concurrently": "^8.2.0",
-    "electron": "^28.0.0",
+    "@vitejs/plugin-react": "^4.0.0",
+    "concurrently": "^7.6.0",
+    "wait-on": "^7.0.1",
+    "electron": "^22.0.0",
     "electron-builder": "^24.13.3",
-    "postcss": "^8.4.0",
+    "vite": "^4.0.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "tailwindcss": "^3.4.0",
-    "vite": "^5.0.0"
+    "tailwindcss": "^3.3.0",
+    "autoprefixer": "^10.4.14",
+    "postcss": "^8.4.24"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.2",
+    "node-fetch": "^2.6.7"
   },
   "build": {
     "appId": "com.quantmind.desktop",
     "productName": "QuantMind Desktop",
-    "copyright": "Copyright © 2024 QuantMind",
     "directories": {
-      "output": "dist"
+      "output": "dist-electron"
     },
     "files": [
-      "src/main/**/*",
-      "dist-renderer/**/*",
-      "node_modules/**/*",
-      "!node_modules/.cache",
-      "!**/*.map"
+      "src/**/*",
+      "dist/**/*",
+      "assets/**/*",
+      "node_modules/**/*"
     ],
+    "asarUnpack": [
+      "src/bot/**/*"
+    ],
+
     "win": {
-      "target": [
-        {
-          "target": "nsis",
-          "arch": ["x64"]
-        }
-      ],
-      "publisherName": "QuantMind"
+      "target": "nsis",
+      "icon": "assets/icon.ico",
+      "requestedExecutionLevel": "asInvoker"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "deleteAppDataOnUninstall": true,
-      "allowElevation": true,
-      "runAfterFinish": true,
-      "include": "build/installer.nsh"
-    },
-    "forceCodeSigning": false,
-    "publish": {
-      "provider": "github",
-      "owner": "quantmindtrader-byte",
-      "repo": "Quant-Mind"
+      "shortcutName": "QuantMind Desktop",
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico"
     }
   }
 }

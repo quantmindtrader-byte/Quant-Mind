@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useApp } from '../context/AppContext';
 
 const RealTimeData = ({ appStatus }) => {
@@ -7,19 +7,28 @@ const RealTimeData = ({ appStatus }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [autoScroll, setAutoScroll] = useState(true);
   const logsEndRef = useRef(null);
+  const scrollTimeoutRef = useRef(null);
 
   useEffect(() => {
     if (autoScroll && logsEndRef.current) {
-      logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+      scrollTimeoutRef.current = setTimeout(() => {
+        logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
     }
-  }, [state.logs, autoScroll]);
+    return () => {
+      if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
+    };
+  }, [state.logs.length, autoScroll]);
 
-  const filteredLogs = state.logs.filter(log => {
-    const matchesFilter = filter === 'all' || log.type === filter;
-    const matchesSearch = searchTerm === '' || 
-      log.message.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesFilter && matchesSearch;
-  });
+  const filteredLogs = useMemo(() => {
+    return state.logs.filter(log => {
+      const matchesFilter = filter === 'all' || log.type === filter;
+      const matchesSearch = searchTerm === '' || 
+        log.message.toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesFilter && matchesSearch;
+    });
+  }, [state.logs, filter, searchTerm]);
 
   const getLogIcon = (type) => {
     switch (type) {
@@ -181,52 +190,53 @@ const RealTimeData = ({ appStatus }) => {
         </div>
       </div>
 
-      {/* Main Content Area - Trading Logs */}
-      <div className="flex-1 overflow-hidden p-6">
-        <div className="h-full flex flex-col">
-          <h3 className="text-xl font-semibold text-white mb-4 flex items-center">
-            <span className="mr-2">📋</span>
-            Trading Logs
-          </h3>
-          <div className="flex-1 overflow-auto">
-            {filteredLogs.length > 0 ? (
-              <div className="space-y-3">
-                {filteredLogs.map((log, index) => (
-                  <div
-                    key={index}
-                    className={`flex items-start space-x-4 p-4 bg-gray-800 rounded-lg border-l-4 ${getLogColor(log.type)} hover:bg-gray-750 transition-colors`}
-                  >
-                    <div className="text-xl mt-1">{getLogIcon(log.type)}</div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between mb-2">
-                        <span className={`text-xs font-semibold uppercase tracking-wider px-2 py-1 rounded ${getLogColor(log.type)} bg-opacity-20`}>
-                          {log.type}
-                        </span>
-                        <span className="text-xs text-gray-500 font-mono">
-                          {formatTimestamp(log.timestamp)}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-200 leading-relaxed break-words">{log.message}</p>
+      {/* Logs Display */}
+      <div className="flex-1 overflow-hidden">
+        <div className="h-full overflow-auto p-6">
+          {filteredLogs.length > 0 ? (
+            <div className="space-y-2">
+              {filteredLogs.map((log, index) => (
+                <div
+                  key={`${log.timestamp}-${index}`}
+                  className={`flex items-start space-x-3 p-3 bg-gray-800 rounded-lg border-l-4 ${getLogColor(log.type)}`}
+                >
+                  <div className="text-lg mt-0.5">{getLogIcon(log.type)}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className={`text-xs font-medium uppercase tracking-wide ${getLogColor(log.type)}`}>
+                        {log.type}
+                      </span>
+                      <span className="text-xs text-gray-500">
+                        {formatTimestamp(log.timestamp)}
+                      </span>
                     </div>
+                    <p className="text-sm text-gray-300 break-words">{log.message}</p>
                   </div>
-                ))}
-                <div ref={logsEndRef} />
-              </div>
-            ) : (
-              <div className="flex items-center justify-center h-full">
-                <div className="text-center text-gray-500">
-                  <div className="text-6xl mb-6">📡</div>
-                  <h3 className="text-xl font-medium mb-3 text-gray-400">No Logs Available</h3>
-                  <p className="text-sm text-gray-500 max-w-md">
-                    {state.logs.length === 0 
-                      ? 'Start the trading bot to see real-time logs and system events'
-                      : 'No logs match your current filter criteria. Try adjusting your search or filter settings.'
-                    }
-                  </p>
                 </div>
+              ))}
+              <div ref={logsEndRef} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-full">
+              <div className="text-center text-gray-500">
+                <div className="text-6xl mb-4">📡</div>
+                <h3 className="text-xl font-medium mb-2">No Data Available</h3>
+                <p className="text-sm">
+                  {state.logs.length === 0 
+                    ? 'Start the trading bot to see real-time data and logs'
+                    : 'No logs match your current filter criteria'
+                  }
+                </p>
+                {!appStatus.backend && (
+                  <div className="mt-4 p-4 bg-yellow-900/20 border border-yellow-700 rounded-lg">
+                    <p className="text-yellow-300 text-sm">
+                      ⚠️ Backend is not running. Please start the backend to see live data.
+                    </p>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

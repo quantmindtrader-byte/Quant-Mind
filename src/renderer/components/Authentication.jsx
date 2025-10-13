@@ -29,15 +29,33 @@ const Authentication = ({ onLogin }) => {
         ? { username_or_email: formData.username, password: formData.password }
         : { username: formData.username, email: formData.email, password: formData.password };
 
-      const response = await fetch(`http://127.0.0.1:5000${endpoint}`, {
+      const url = `http://74.162.152.95${endpoint}`;
+      console.log('Making request to:', url);
+      
+      // Use exact same configuration as website
+      const result = await window.electronAPI.httpRequest(url, {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(payload)
+        data: payload,  // Use data instead of body to match website
+        timeout: 10000
       });
 
-      const data = await response.json();
+      if (!result.success) {
+        throw new Error(result.error);
+      }
+
+      console.log('Response status:', result.status);
+      console.log('Raw response:', result.text);
+      
+      let data;
+      try {
+        data = JSON.parse(result.text);
+      } catch (parseError) {
+        console.error('JSON parse error:', parseError);
+        throw new Error(`Server returned HTML instead of JSON: ${result.text.substring(0, 100)}...`);
+      }
 
       if (data.success) {
         if (isLogin) {
@@ -52,7 +70,8 @@ const Authentication = ({ onLogin }) => {
         setError(data.message || 'Authentication failed');
       }
     } catch (err) {
-      setError('Connection error. Please ensure the backend is running.');
+      console.error('Authentication error:', err);
+      setError(`Connection error: ${err.message}. Please check your internet connection.`);
     } finally {
       setLoading(false);
     }

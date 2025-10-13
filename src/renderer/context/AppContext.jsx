@@ -65,7 +65,7 @@ export function AppProvider({ children }) {
   const fetchLogs = async () => {
     try {
       dispatch({ type: 'SET_LOGS_FETCHING', payload: true });
-      const response = await fetch('http://127.0.0.1:5000/api/logs');
+      const response = await fetch('http://74.162.152.95/api/logs');
       if (response.ok) {
         const data = await response.json();
         dispatch({ type: 'SET_LOGS', payload: data.logs || [] });
@@ -99,22 +99,16 @@ export function AppProvider({ children }) {
 
     // Clear backend logs on startup
     try {
-      fetch('http://127.0.0.1:5000/api/logs/clear', {
+      fetch('http://74.162.152.95/api/logs/clear', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' }
       }).catch(() => {});
     } catch (error) {
       // Ignore errors on startup
     }
-
-    // Fetch logs initially
-    fetchLogs();
     
     // Fetch user profile initially and refresh subscription info
     fetchUserProfile();
-
-    // Set up polling for logs every 3 seconds
-    const logInterval = setInterval(fetchLogs, 3000);
     
     // Set up polling for user profile every 60 seconds to refresh subscription
     const profileInterval = setInterval(fetchUserProfile, 60000);
@@ -133,14 +127,35 @@ export function AppProvider({ children }) {
       });
 
       window.electronAPI.onAgentLog((event, data) => {
-        dispatch({ 
-          type: 'ADD_LOG', 
-          payload: { 
-            type: 'agent', 
-            message: data, 
-            timestamp: new Date().toISOString() 
-          }
-        });
+        // Filter out startup configuration logs
+        const isStartupLog = 
+          data.includes('Cloud configuration validated') ||
+          data.includes('MT5 configuration validated') ||
+          data.includes('API keys loaded:') ||
+          data.includes('Initialized API clients:');
+        
+        if (isStartupLog) return;
+        
+        // Show all logs with [INFO], [SUCCESS], [ERROR], [WARNING] tags
+        const shouldShow = 
+          data.includes('[INFO]') ||
+          data.includes('[SUCCESS]') ||
+          data.includes('[ERROR]') ||
+          data.includes('[WARNING]') ||
+          data.includes('[CYCLE]') ||
+          data.includes('DECISION:') ||
+          data.includes('Rationale:');
+        
+        if (shouldShow) {
+          dispatch({ 
+            type: 'ADD_LOG', 
+            payload: { 
+              type: 'agent', 
+              message: data, 
+              timestamp: new Date().toISOString() 
+            }
+          });
+        }
         
         // Parse real-time data from agent logs
         try {
@@ -159,38 +174,56 @@ export function AppProvider({ children }) {
       });
 
       window.electronAPI.onBackendError((event, data) => {
-        dispatch({ 
-          type: 'ADD_LOG', 
-          payload: { 
-            type: 'error', 
-            message: data, 
-            timestamp: new Date().toISOString() 
-          }
-        });
+        // Filter out connection errors from logs (show only as notifications)
+        const isConnectionError = data.toLowerCase().includes('xhr poll error') || 
+                                 data.toLowerCase().includes('connection failed') ||
+                                 data.toLowerCase().includes('websocket');
+        
+        if (!isConnectionError) {
+          dispatch({ 
+            type: 'ADD_LOG', 
+            payload: { 
+              type: 'error', 
+              message: data, 
+              timestamp: new Date().toISOString() 
+            }
+          });
+        }
+        
+        // Always show notification (will auto-dismiss after 5 seconds)
         dispatch({ 
           type: 'ADD_NOTIFICATION', 
           payload: { 
             type: 'error', 
-            title: 'Backend Error', 
+            title: isConnectionError ? 'Connection Issue' : 'Backend Error', 
             message: data.substring(0, 100) + '...' 
           }
         });
       });
 
       window.electronAPI.onAgentError((event, data) => {
-        dispatch({ 
-          type: 'ADD_LOG', 
-          payload: { 
-            type: 'error', 
-            message: data, 
-            timestamp: new Date().toISOString() 
-          }
-        });
+        // Filter out connection errors from logs (show only as notifications)
+        const isConnectionError = data.toLowerCase().includes('xhr poll error') || 
+                                 data.toLowerCase().includes('connection failed') ||
+                                 data.toLowerCase().includes('websocket');
+        
+        if (!isConnectionError) {
+          dispatch({ 
+            type: 'ADD_LOG', 
+            payload: { 
+              type: 'error', 
+              message: data, 
+              timestamp: new Date().toISOString() 
+            }
+          });
+        }
+        
+        // Always show notification (will auto-dismiss after 5 seconds)
         dispatch({ 
           type: 'ADD_NOTIFICATION', 
           payload: { 
             type: 'error', 
-            title: 'Trading Agent Error', 
+            title: isConnectionError ? 'Connection Issue' : 'Trading Agent Error', 
             message: data.substring(0, 100) + '...' 
           }
         });
@@ -198,7 +231,6 @@ export function AppProvider({ children }) {
     }
 
     return () => {
-      clearInterval(logInterval);
       clearInterval(profileInterval);
       delete window.appActions;
       if (window.electronAPI) {
@@ -213,7 +245,7 @@ export function AppProvider({ children }) {
   const fetchUserProfile = async () => {
     try {
       const token = localStorage.getItem('authToken');
-      const response = await fetch('http://127.0.0.1:5000/api/user/dashboard', {
+      const response = await fetch('http://74.162.152.95/api/user/dashboard', {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -256,7 +288,7 @@ export function AppProvider({ children }) {
       dispatch({ type: 'CLEAR_LOGS' });
       // Clear backend logs
       try {
-        await fetch('http://127.0.0.1:5000/api/logs/clear', {
+        await fetch('http://74.162.152.95/api/logs/clear', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' }
         });

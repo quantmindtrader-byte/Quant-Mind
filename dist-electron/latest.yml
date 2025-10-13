@@ -1,0 +1,8 @@
+version: 1.2.3
+files:
+  - url: QuantMind-Desktop-Setup-1.2.3.exe
+    sha512: ZgHcMJvSdrNbFZeI1XZ7OxRjCIVACmqm8tfqA62UI91jQqkhk8llXhV1T9SidIetzR0MVd4oe1Fym/DIr65GEg==
+    size: 748830592
+path: QuantMind-Desktop-Setup-1.2.3.exe
+sha512: ZgHcMJvSdrNbFZeI1XZ7OxRjCIVACmqm8tfqA62UI91jQqkhk8llXhV1T9SidIetzR0MVd4oe1Fym/DIr65GEg==
+releaseDate: '2025-10-13T11:57:05.303Z'

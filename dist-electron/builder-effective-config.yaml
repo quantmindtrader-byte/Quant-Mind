@@ -1,0 +1,26 @@
+directories:
+  output: dist-electron
+  buildResources: build
+appId: com.quantmind.desktop
+productName: QuantMind Desktop
+files:
+  - filter:
+      - src/**/*
+      - dist/**/*
+      - assets/**/*
+      - node_modules/**/*
+asarUnpack:
+  - src/bot/**/*
+win:
+  target: nsis
+  icon: assets/icon.ico
+  requestedExecutionLevel: asInvoker
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: QuantMind Desktop
+  installerIcon: assets/icon.ico
+  uninstallerIcon: assets/icon.ico
+electronVersion: 22.3.27

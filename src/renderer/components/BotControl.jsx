@@ -13,7 +13,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
     const loadConfigs = async () => {
       try {
         const token = localStorage.getItem('authToken');
-        const response = await fetch('http://127.0.0.1:5000/api/settings', {
+        const response = await fetch('http://74.162.152.95/api/settings', {
           headers: {
             'Authorization': `Bearer ${token}`
           }
@@ -86,7 +86,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
       const token = localStorage.getItem('authToken');
       try {
         // Get current backend config first
-        const currentResponse = await fetch('http://127.0.0.1:5000/api/settings', {
+        const currentResponse = await fetch('http://74.162.152.95/api/settings', {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -100,7 +100,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
           };
         }
         
-        await fetch('http://127.0.0.1:5000/api/settings', {
+        await fetch('http://74.162.152.95/api/settings', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -162,11 +162,20 @@ const BotControl = ({ appStatus, setAppStatus }) => {
 
   const handleForceReanalysis = async () => {
     try {
-      actions.addNotification({
-        type: 'info',
-        title: 'Reanalysis Triggered',
-        message: 'Force reanalysis has been triggered. Changes will apply on the next cycle.'
-      });
+      const result = await window.electronAPI.forceReanalysisWithAd();
+      if (result.success) {
+        actions.addNotification({
+          type: 'info',
+          title: 'Reanalysis Triggered',
+          message: 'Force reanalysis has been triggered. Changes will apply on the next cycle.'
+        });
+      } else {
+        actions.addNotification({
+          type: 'error',
+          title: 'Reanalysis Failed',
+          message: result.error || 'Failed to trigger reanalysis'
+        });
+      }
     } catch (error) {
       actions.addNotification({
         type: 'error',
@@ -246,7 +255,7 @@ const BotControl = ({ appStatus, setAppStatus }) => {
         </div>
 
         {/* Control Panel */}
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           {/* Bot Controls */}
           <div className="card">
             <h3 className="text-lg font-semibold text-white mb-4 flex items-center">
@@ -340,12 +349,14 @@ const BotControl = ({ appStatus, setAppStatus }) => {
                 >
                   <div className="flex items-center justify-center space-x-2">
                     <span>🔄</span>
-                    <span>Force Reanalysis</span>
+                    <span>Force Reanalysis {JSON.parse(localStorage.getItem('user') || '{}').subscription?.plan_type === 'Free' ? '(Ad Required)' : ''}</span>
                   </div>
                 </button>
               </div>
             </div>
           </div>
+
+
 
           {/* System Information */}
           <div className="card">
