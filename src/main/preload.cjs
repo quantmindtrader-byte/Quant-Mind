@@ -49,5 +49,23 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setUserId: (userId) => ipcRenderer.invoke('set-user-id', userId),
 
   // Notifications
-  showNotification: (options) => ipcRenderer.invoke('show-notification', options)
+  showNotification: (options) => ipcRenderer.invoke('show-notification', options),
+  
+  // Log file reading
+  readLogFile: (userId) => ipcRenderer.invoke('read-log-file', userId),
+  
+  // MT5 Config management
+  saveMT5Config: (configData) => ipcRenderer.invoke('save-mt5-config', configData),
+  fetchMT5Config: () => ipcRenderer.invoke('fetch-mt5-config'),
+  addMT5Account: (accountData) => ipcRenderer.invoke('add-mt5-account', accountData),
+  updateMT5Account: (accountData) => ipcRenderer.invoke('update-mt5-account', accountData),
+  removeMT5Account: (configName) => ipcRenderer.invoke('remove-mt5-account', configName),
+
+  // Auto-update
+  checkForUpdates: () => ipcRenderer.invoke('check-for-updates'),
+  downloadUpdate: () => ipcRenderer.invoke('download-update'),
+  installUpdate: () => ipcRenderer.invoke('install-update'),
+  onUpdateAvailable: (callback) => ipcRenderer.on('update-available', callback),
+  onUpdateDownloadProgress: (callback) => ipcRenderer.on('update-download-progress', callback),
+  onUpdateDownloaded: (callback) => ipcRenderer.on('update-downloaded', callback)
 });

@@ -4,7 +4,14 @@ const path = require('path');
 class AdManager {
   constructor() {
     this.adWindow = null;
-    this.setupIPC();
+    this.ipcSetup = false;
+  }
+
+  ensureIPC() {
+    if (!this.ipcSetup) {
+      this.setupIPC();
+      this.ipcSetup = true;
+    }
   }
 
   setupIPC() {
@@ -18,6 +25,7 @@ class AdManager {
   }
 
   async showRewardedAd(action = 'continue') {
+    this.ensureIPC();
     return new Promise((resolve) => {
       if (this.adWindow) {
         this.adWindow.close();
@@ -35,7 +43,7 @@ class AdManager {
         webPreferences: {
           nodeIntegration: false,
           contextIsolation: true,
-          preload: path.join(__dirname, 'preload.js'),
+          preload: path.join(__dirname, 'preload.cjs'),
           webSecurity: false // Allow AdMob external resources
         }
       });
@@ -67,6 +75,7 @@ class AdManager {
   }
 
   async checkUserPlanAndShowAd(userPlan, action = 'continue') {
+    this.ensureIPC();
     console.log(`AdManager: Checking user plan: ${userPlan}`);
     // All paid plans skip ads
     if (['Starter', 'Pro', 'Elite'].includes(userPlan)) {

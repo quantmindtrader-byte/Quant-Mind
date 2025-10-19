@@ -1,6 +1,7 @@
 directories:
   output: dist-electron
   buildResources: build
+asar: false
 appId: com.quantmind.desktop
 productName: QuantMind Desktop
 files:
@@ -23,4 +24,8 @@ nsis:
   shortcutName: QuantMind Desktop
   installerIcon: assets/icon.ico
   uninstallerIcon: assets/icon.ico
+  perMachine: false
+publish:
+  - provider: generic
+    url: http://74.162.152.95:3001/updates
 electronVersion: 22.3.27

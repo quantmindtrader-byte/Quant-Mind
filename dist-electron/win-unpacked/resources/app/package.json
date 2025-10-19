@@ -1,0 +1,12 @@
+{
+  "name": "quantmind-desktop",
+  "version": "1.2.4",
+  "description": "QuantMind Desktop Trading Application",
+  "author": "QuantMind",
+  "main": "src/main/main.cjs",
+  "dependencies": {
+    "socket.io-client": "^4.7.2",
+    "node-fetch": "^2.6.7",
+    "electron-updater": "^6.1.7"
+  }
+}

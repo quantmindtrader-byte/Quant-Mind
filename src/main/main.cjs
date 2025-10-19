@@ -1,8 +1,8 @@
 const { app, BrowserWindow, ipcMain, Menu, dialog, Notification } = require('electron');
 const path = require('path');
-const adManager = require('./adManager');
 const { spawn } = require('child_process');
 const fs = require('fs');
+const { autoUpdater } = require('electron-updater');
 
 // Add fetch polyfill for Node.js
 if (!globalThis.fetch) {
@@ -11,6 +11,15 @@ if (!globalThis.fetch) {
 }
 
 const { io } = require('socket.io-client');
+
+// Configure auto-updater
+autoUpdater.setFeedURL({
+  provider: 'generic',
+  url: 'http://74.162.152.95:3001/updates'
+});
+
+autoUpdater.autoDownload = false;
+autoUpdater.autoInstallOnAppQuit = true;
 
 class TradingAppManager {
   constructor() {
@@ -24,7 +33,9 @@ class TradingAppManager {
     this.bridgePort = 8080;
     this.heartbeatInterval = null;
     this.botProcess = null;
-    
+  }
+
+  setupAppEvents() {
     // Handle SSL certificate errors and allow external requests
     app.on('certificate-error', (event, webContents, url, error, certificate, callback) => {
       event.preventDefault();
@@ -48,7 +59,7 @@ class TradingAppManager {
       webPreferences: {
         nodeIntegration: false,
         contextIsolation: true,
-        preload: path.join(__dirname, 'preload.js'),
+        preload: path.join(__dirname, 'preload.cjs'),
         webSecurity: false, // Disable web security to allow external requests
         allowRunningInsecureContent: true, // Allow HTTP requests
         experimentalFeatures: true,
@@ -62,7 +73,7 @@ class TradingAppManager {
     });
 
     // Load the React app
-    const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+    const isDev = process.env.NODE_ENV !== 'production' && (process.env.NODE_ENV === 'development' || !app.isPackaged);
     
     if (isDev) {
       // Development mode - connect to Vite dev server
@@ -156,35 +167,31 @@ class TradingAppManager {
       
       const path = require('path');
       
-      // Check if bot executable exists, otherwise use Python script
-      let botExePath, botLauncherPath;
-      
-      if (app.isPackaged) {
-        // In packaged app, look in resources folder
-        botExePath = path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'bot', 'bot_executable', 'Agent.exe');
-        botLauncherPath = path.join(process.resourcesPath, 'app.asar.unpacked', 'src', 'bot', 'bot_launcher.py');
-      } else {
-        // In development
-        botExePath = path.join(__dirname, '..', 'bot', 'bot_executable', 'Agent.exe');
-        botLauncherPath = path.join(__dirname, '..', 'bot', 'bot_launcher.py');
-      }
+      // Check if TradingBot.exe exists in dist folder first
+      const botExePath = path.join(__dirname, '..', 'bot', 'dist', 'TradingBot.exe');
+      const botLauncherPath = path.join(__dirname, '..', 'bot', 'bot_launcher.py');
       
       let botCommand;
       let botArgs;
-      let useExecutable = false;
       
       if (fs.existsSync(botExePath)) {
-        // Use compiled executable (production)
-        botCommand = botExePath; // Don't quote, spawn handles it
-        botArgs = ['--user_id', config.user_id.toString(), '--config', config.selected_mt5_config];
-        useExecutable = true;
-        console.log('\x1b[36m[DESKTOP] Using bot executable (production mode)\x1b[0m');
+        // Use .exe if available
+        console.log('\x1b[36m[DESKTOP] Using TradingBot.exe\x1b[0m');
+        botCommand = botExePath;
+        botArgs = [
+          '--user_id', config.user_id.toString(),
+          '--config', config.selected_mt5_config
+        ];
       } else {
-        // Use Python script (development)
+        // Fall back to Python script
+        console.log('\x1b[36m[DESKTOP] Using bot_launcher.py (TradingBot.exe not found)\x1b[0m');
         const pythonExe = process.platform === 'win32' ? 'python' : 'python3';
         botCommand = pythonExe;
-        botArgs = [botLauncherPath, config.user_id.toString(), config.selected_mt5_config];
-        console.log('\x1b[36m[DESKTOP] Using Python script (development mode)\x1b[0m');
+        botArgs = [
+          botLauncherPath,
+          '--user_id', config.user_id.toString(),
+          '--config', config.selected_mt5_config
+        ];
       }
       
       console.log('\x1b[36m[DESKTOP] Bot command:\x1b[0m', botCommand);
@@ -254,15 +261,18 @@ class TradingAppManager {
       // Wait a moment for initial logs
       await new Promise(resolve => setTimeout(resolve, 500));
       
+      // Check if process is still running
+      if (!this.botProcess || this.botProcess.killed) {
+        throw new Error('Bot process failed to start or exited immediately');
+      }
+      
       const result = { success: true, message: 'Bot started successfully', pid: this.botProcess.pid };
       console.log('\x1b[32m[TRADING AGENT] Bot process started successfully (PID: ' + this.botProcess.pid + ')\x1b[0m');
       
-      const logPath = useExecutable 
-        ? path.join(__dirname, '..', 'bot', 'bot_executable', 'logs', `bot_user_${config.user_id}.log`)
-        : path.join(__dirname, '..', 'bot', 'logs', `bot_user_${config.user_id}.log`);
+      const logPath = path.join(__dirname, '..', 'bot', 'logs', `bot_user_${config.user_id}.log`);
       console.log('\x1b[36m[TRADING AGENT] Log file: ' + logPath + '\x1b[0m\n');
       
-      this.sendToRenderer('agent-log', `Bot started successfully (PID: ${this.botProcess.pid})`);
+      this.sendToRenderer('agent-log', 'Bot started successfully');
       this.sendToRenderer('bot-started', result);
       return result;
     } catch (error) {
@@ -362,38 +372,10 @@ class TradingAppManager {
 
     ipcMain.handle('start-agent', async (event, config) => {
       try {
-        // Get user plan from database
-        const authToken = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("authToken")'
-        ).catch(() => null);
-        
         // Set current user ID for bridge registration
         this.currentUserId = await this.mainWindow.webContents.executeJavaScript(
           'localStorage.getItem("userId")'
         ).catch(() => null);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-              const plan = await response.json();
-              userPlan = plan.plan_type || 'Free';
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        }
-        
-        // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'start-bot');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required to start bot. Please watch the ad or upgrade to Premium.' };
-          }
-        }
         
         // Get auth token from localStorage if available
         const botAuthToken = await this.mainWindow.webContents.executeJavaScript(
@@ -495,39 +477,7 @@ class TradingAppManager {
     });
 
     ipcMain.handle('force-reanalysis-with-ad', async () => {
-      try {
-        // Get user plan from database
-        const authToken = await this.mainWindow.webContents.executeJavaScript(
-          'localStorage.getItem("authToken")'
-        ).catch(() => null);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            if (response.ok) {
-              const plan = await response.json();
-              userPlan = plan.plan_type || 'Free';
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        }
-        
-        // Skip ads for paid users
-        if (!['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-          const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-          if (!adWatched) {
-            return { success: false, error: 'Ad required for force reanalysis. Please watch the ad or upgrade to Premium.' };
-          }
-        }
-        
-        return { success: true, canProceed: true };
-      } catch (error) {
-        return { success: false, error: error.message };
-      }
+      return { success: true, canProceed: true };
     });
 
     ipcMain.handle('open-file-dialog', async () => {
@@ -617,8 +567,11 @@ class TradingAppManager {
     });
 
     ipcMain.handle('save-config-with-ad-check', async (event, configData, action) => {
+      return { success: true, canProceed: true };
+    });
+
+    ipcMain.handle('save-mt5-config', async (event, configData) => {
       try {
-        // Get user plan from database
         const authToken = await this.mainWindow.webContents.executeJavaScript(
           'localStorage.getItem("authToken")'
         ).catch(() => null);
@@ -627,39 +580,203 @@ class TradingAppManager {
           'localStorage.getItem("userId")'
         ).catch(() => null);
         
-        console.log('DEBUG: Auth token available:', !!authToken);
-        console.log('DEBUG: User ID from localStorage:', userId);
-        
-        let userPlan = 'Free';
-        if (authToken) {
-          try {
-            const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-              headers: { 'Authorization': `Bearer ${authToken}` }
-            });
-            console.log('DEBUG: API response status:', response.status);
-            if (response.ok) {
-              const plan = await response.json();
-              console.log('DEBUG: API response data:', plan);
-              userPlan = plan.plan_type || 'Free';
-              console.log('DEBUG: Final user plan:', userPlan);
-            } else {
-              console.log('DEBUG: API response not OK:', await response.text());
-            }
-          } catch (error) {
-            console.log('Failed to get user plan from database:', error);
-          }
-        } else {
-          console.log('DEBUG: No auth token found');
+        if (!authToken || !userId) {
+          return { success: false, error: 'Authentication required' };
         }
         
-        const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, action);
+        console.log('Saving MT5 config data:', JSON.stringify(configData, null, 2));
         
-        if (!adWatched) {
-          return { success: false, error: 'Ad required to save configuration. Please watch the ad or upgrade to Premium.' };
+        // Save cloud config (symbols, risk params, etc)
+        const cloudConfigResponse = await fetch(`${this.backendUrl}/api/settings`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify(configData),
+          timeout: 30000
+        });
+        
+        if (!cloudConfigResponse.ok) {
+          const errorText = await cloudConfigResponse.text();
+          return { success: false, error: `Failed to save cloud config: ${cloudConfigResponse.status} - ${errorText}` };
         }
         
-        return { success: true, canProceed: true };
+        console.log('Cloud config saved successfully');
+        return { success: true, message: 'Configuration saved successfully' };
       } catch (error) {
+        console.error('MT5 config save error:', error);
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('add-mt5-account', async (event, accountData) => {
+      try {
+        const authToken = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("authToken")'
+        ).catch(() => null);
+        
+        const userId = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("userId")'
+        ).catch(() => null);
+        
+        if (!authToken || !userId) {
+          return { success: false, error: 'Authentication required' };
+        }
+        
+        const response = await fetch(`${this.backendUrl}/api/mt5/add-config`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ user_id: userId, ...accountData }),
+          timeout: 30000
+        });
+        
+        const result = await response.json();
+        return result;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('update-mt5-account', async (event, accountData) => {
+      try {
+        const authToken = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("authToken")'
+        ).catch(() => null);
+        
+        const userId = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("userId")'
+        ).catch(() => null);
+        
+        if (!authToken || !userId) {
+          return { success: false, error: 'Authentication required' };
+        }
+        
+        const response = await fetch(`${this.backendUrl}/api/mt5/update-config`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ user_id: userId, ...accountData }),
+          timeout: 30000
+        });
+        
+        const result = await response.json();
+        return result;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('remove-mt5-account', async (event, configName) => {
+      try {
+        const authToken = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("authToken")'
+        ).catch(() => null);
+        
+        const userId = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("userId")'
+        ).catch(() => null);
+        
+        if (!authToken || !userId) {
+          return { success: false, error: 'Authentication required' };
+        }
+        
+        const response = await fetch(`${this.backendUrl}/api/mt5/remove-config`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${authToken}`
+          },
+          body: JSON.stringify({ user_id: userId, config_name: configName }),
+          timeout: 30000
+        });
+        
+        const result = await response.json();
+        return result;
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('download-update', async () => {
+      try {
+        await autoUpdater.downloadUpdate();
+        return { success: true };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('install-update', async () => {
+      autoUpdater.quitAndInstall(false, true);
+      return { success: true };
+    });
+
+    ipcMain.handle('check-for-updates', async () => {
+      try {
+        const result = await autoUpdater.checkForUpdates();
+        return { success: true, updateInfo: result?.updateInfo };
+      } catch (error) {
+        return { success: false, error: error.message };
+      }
+    });
+
+    ipcMain.handle('fetch-mt5-config', async (event) => {
+      try {
+        const authToken = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("authToken")'
+        ).catch(() => null);
+        
+        const userId = await this.mainWindow.webContents.executeJavaScript(
+          'localStorage.getItem("userId")'
+        ).catch(() => null);
+        
+        if (!authToken || !userId) {
+          return { success: false, error: 'Authentication required' };
+        }
+        
+        console.log('Fetching MT5 configs from backend for user:', userId);
+        
+        const response = await fetch(`${this.backendUrl}/api/bot/mt5-configs/${userId}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${authToken}`
+          },
+          timeout: 30000
+        });
+        
+        const responseText = await response.text();
+        console.log('MT5 config fetch response status:', response.status);
+        console.log('MT5 config fetch response:', responseText);
+        
+        if (!response.ok) {
+          return { success: false, error: `Server error: ${response.status} - ${responseText}` };
+        }
+        
+        const result = JSON.parse(responseText);
+        console.log('Parsed MT5 config data:', JSON.stringify(result, null, 2));
+        
+        // Transform configs array to mt5_configs object format
+        const mt5_configs = {};
+        if (result.success && result.configs) {
+          result.configs.forEach(cfg => {
+            mt5_configs[cfg.config_name] = {
+              path: cfg.terminal_path,
+              login: cfg.login,
+              password: cfg.password,
+              server: cfg.server
+            };
+          });
+        }
+        
+        return { success: true, data: { mt5_configs } };
+      } catch (error) {
+        console.error('MT5 config fetch error:', error);
         return { success: false, error: error.message };
       }
     });
@@ -704,37 +821,7 @@ class TradingAppManager {
           {
             label: 'Force Reanalysis',
             accelerator: 'CmdOrCtrl+F',
-            click: async () => {
-              // Get user plan from database
-              const authToken = await this.mainWindow.webContents.executeJavaScript(
-                'localStorage.getItem("authToken")'
-              ).catch(() => null);
-              
-              let userPlan = 'Free';
-              if (authToken) {
-                try {
-                  const response = await fetch(`${this.backendUrl}/api/user/plan`, {
-                    headers: { 'Authorization': `Bearer ${authToken}` }
-                  });
-                  if (response.ok) {
-                    const plan = await response.json();
-                    userPlan = plan.plan_type || 'Free';
-                  }
-                } catch (error) {
-                  console.log('Failed to get user plan from database:', error);
-                }
-              }
-              
-              // Skip ads for paid users
-              if (['Starter', 'Pro', 'Elite'].includes(userPlan)) {
-                this.sendToRenderer('menu-action', 'force-reanalysis');
-              } else {
-                const adWatched = await adManager.checkUserPlanAndShowAd(userPlan, 'force-reanalysis');
-                if (adWatched) {
-                  this.sendToRenderer('menu-action', 'force-reanalysis');
-                }
-              }
-            }
+            click: () => this.sendToRenderer('menu-action', 'force-reanalysis')
           }
         ]
       },
@@ -1040,11 +1127,52 @@ class TradingAppManager {
     }
   }
 
+  setupAutoUpdater() {
+    autoUpdater.on('checking-for-update', () => {
+      console.log('Checking for updates...');
+    });
+
+    autoUpdater.on('update-available', (info) => {
+      console.log('Update available:', info.version);
+      this.sendToRenderer('update-available', { version: info.version });
+    });
+
+    autoUpdater.on('update-not-available', () => {
+      console.log('No updates available');
+    });
+
+    autoUpdater.on('download-progress', (progress) => {
+      console.log(`Download progress: ${progress.percent}%`);
+      this.sendToRenderer('update-download-progress', progress);
+    });
+
+    autoUpdater.on('update-downloaded', (info) => {
+      console.log('Update downloaded:', info.version);
+      this.sendToRenderer('update-downloaded', { version: info.version });
+    });
+
+    autoUpdater.on('error', (error) => {
+      console.error('Auto-updater error:', error);
+    });
+
+    // Check for updates on startup (after 3 seconds)
+    setTimeout(() => {
+      autoUpdater.checkForUpdates();
+    }, 3000);
+
+    // Check for updates every 6 hours
+    setInterval(() => {
+      autoUpdater.checkForUpdates();
+    }, 6 * 60 * 60 * 1000);
+  }
+
   async initialize() {
+    this.setupAppEvents();
     await this.createWindow();
     this.setupIPC();
     this.setupSocketConnection();
     this.createMenu();
+    this.setupAutoUpdater();
     
     // Check backend connection on startup
     const connected = await this.checkBackendConnection();
@@ -1088,24 +1216,26 @@ class TradingAppManager {
   }
 }
 
-const appManager = new TradingAppManager();
+if (app) {
+  const appManager = new TradingAppManager();
 
-app.whenReady().then(() => {
-  appManager.initialize();
-});
+  app.whenReady().then(() => {
+    appManager.initialize();
+  });
 
-app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') {
-    app.quit();
-  }
-});
+  app.on('window-all-closed', () => {
+    if (process.platform !== 'darwin') {
+      app.quit();
+    }
+  });
 
-app.on('activate', () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
-    appManager.createWindow();
-  }
-});
+  app.on('activate', () => {
+    if (BrowserWindow.getAllWindows().length === 0) {
+      appManager.createWindow();
+    }
+  });
 
-app.on('before-quit', () => {
-  appManager.cleanup();
-});
+  app.on('before-quit', () => {
+    appManager.cleanup();
+  });
+}

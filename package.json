@@ -1,9 +1,9 @@
 {
   "name": "quantmind-desktop",
-  "version": "1.2.3",
+  "version": "1.2.4",
   "description": "QuantMind Desktop Trading Application",
   "author": "QuantMind",
-  "main": "src/main/main.js",
+  "main": "src/main/main.cjs",
   "scripts": {
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
@@ -30,9 +30,11 @@
   },
   "dependencies": {
     "socket.io-client": "^4.7.2",
-    "node-fetch": "^2.6.7"
+    "node-fetch": "^2.6.7",
+    "electron-updater": "^6.1.7"
   },
   "build": {
+    "asar": false,
     "appId": "com.quantmind.desktop",
     "productName": "QuantMind Desktop",
     "directories": {
@@ -60,7 +62,14 @@
       "createStartMenuShortcut": true,
       "shortcutName": "QuantMind Desktop",
       "installerIcon": "assets/icon.ico",
-      "uninstallerIcon": "assets/icon.ico"
-    }
+      "uninstallerIcon": "assets/icon.ico",
+      "perMachine": false
+    },
+    "publish": [
+      {
+        "provider": "generic",
+        "url": "http://74.162.152.95:3001/updates"
+      }
+    ]
   }
 }

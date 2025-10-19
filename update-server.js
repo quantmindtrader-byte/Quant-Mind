@@ -5,7 +5,7 @@ const cors = require('cors');
 
 const app = express();
 const PORT = 3001;
-const UPDATES_DIR = path.join(__dirname, 'dist');
+const UPDATES_DIR = path.join(__dirname, 'dist-electron');
 
 app.use(cors());
 app.use(express.static(UPDATES_DIR));
